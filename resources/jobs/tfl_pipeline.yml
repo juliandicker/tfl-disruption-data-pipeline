@@ -1,8 +1,8 @@
 resources:
   jobs:
-    bronze_ingestion:
-      name: bronze-ingestion
-      description: "Ingests TfL tube line status and synthetic customer profiles into bronze Delta tables."
+    tfl_pipeline:
+      name: tfl-pipeline
+      description: "End-to-end TfL disruption pipeline: bronze ingestion → silver → gold → Lakehouse monitors."
 
       run_as:
         service_principal_name: ${var.pipeline_sp_application_id}
