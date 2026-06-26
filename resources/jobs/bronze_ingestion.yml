@@ -12,32 +12,23 @@ resources:
         timezone_id: "Europe/London"
         pause_status: UNPAUSED
 
-      job_clusters:
-        - job_cluster_key: bronze_cluster
-          new_cluster:
-            spark_version: "15.4.x-scala2.12"
-            node_type_id: "Standard_DS3_v2"
-            num_workers: 0
-            spark_conf:
-              spark.databricks.cluster.profile: singleNode
-              spark.master: "local[*]"
-            data_security_mode: SINGLE_USER
+      environments:
+        - environment_key: default
+          spec:
+            client: "1"
+            dependencies:
+              - requests
+              - faker
 
       tasks:
         - task_key: ingest_tfl
           description: "Fetches TfL tube line status and disruption data via the public API."
-          job_cluster_key: bronze_cluster
+          environment_key: default
           spark_python_task:
             python_file: /Workspace${workspace.file_path}/src/bronze/ingest_tfl.py
-          libraries:
-            - pypi:
-                package: requests
 
         - task_key: generate_profiles
           description: "Generates synthetic customer profiles using Faker and writes them to bronze."
-          job_cluster_key: bronze_cluster
+          environment_key: default
           spark_python_task:
             python_file: /Workspace${workspace.file_path}/src/bronze/generate_profiles.py
-          libraries:
-            - pypi:
-                package: faker
