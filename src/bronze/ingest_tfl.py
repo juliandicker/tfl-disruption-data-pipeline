@@ -93,15 +93,7 @@ def main():
     ingested_at = datetime.now(timezone.utc)
 
     line_statuses = _get("/line/mode/tube/status")
-
-    try:
-        disruptions = _get("/line/mode/tube/disruption")
-    except Exception as exc:
-        print(f"Warning: disruption endpoint returned an error ({exc}); proceeding without disruption detail.")
-        disruptions = []
-
     status_by_id = {line["id"]: line for line in line_statuses}
-    disruption_by_id = {d["id"]: d for d in disruptions}
 
     rows = []
     for station_name, line_ids in STATION_LINES.items():
@@ -109,9 +101,10 @@ def main():
             line = status_by_id.get(line_id, {})
             statuses = line.get("lineStatuses", [{}])
             primary = statuses[0] if statuses else {}
-            disruption = disruption_by_id.get(line_id, {})
+            disruption = primary.get("disruption") or {}
             affected_stops = [
-                s.get("name", "") for s in disruption.get("affectedStops", [])
+                s.get("commonName", s.get("name", ""))
+                for s in disruption.get("affectedStops", [])
             ]
 
             rows.append({
