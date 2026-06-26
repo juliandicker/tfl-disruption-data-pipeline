@@ -12,8 +12,16 @@ Customer profile data in this pipeline is **entirely synthetic**, generated usin
 
 ```
 TfL Open Data API ──┐
-                    ├─► bronze (Lakeflow Job) ─► silver (Declarative Pipeline) ─► gold
+                    ├─► bronze ──► silver (Declarative Pipeline) ──► gold ──► monitors
 Faker generator ────┘
+```
+
+All stages are orchestrated by a single `tfl-pipeline` Lakeflow Job that runs on a 15-minute schedule:
+
+```
+ingest_tfl ──┐
+              ├──► run_silver_pipeline ──► run_gold_pipeline ──► setup_monitors
+generate_profiles ──┘
 ```
 
 ### Why two repos, two tools?
@@ -23,26 +31,22 @@ Faker generator ────┘
 | Infrastructure (workspace, storage, catalogs, network) | `simple-databricks-deployment` | Terraform |
 | Workspace assets (jobs, pipelines, monitors) | this repo | Databricks Asset Bundles |
 
-Terraform owns the platform layer. DABs owns everything deployed into that platform. This is a deliberate toolchain split, not an inconsistency: each tool does exactly what it is designed for. The infrastructure repo provisions the `bronze`, `silver`, and `gold` Unity Catalog catalogs; this repo writes data into them.
+Terraform owns the platform layer. DABs owns everything deployed into that platform. The infrastructure repo provisions the `bronze`, `silver`, and `gold` Unity Catalog catalogs; this repo writes data into them.
 
-### Bronze — Lakeflow Job
+### Bronze — ingestion tasks
 
-Both sources write directly to bronze. There is no landing layer because:
-- The TfL API and Faker generator both produce typed, structured responses — not unknown files that need staging.
-- The one property a landing layer would have preserved (point-in-time replay of irreplaceable API captures) is kept instead via a `raw_payload` column on each bronze table — the verbatim API or generator response alongside the parsed columns.
-
-A plain Lakeflow Job is right for this layer: it is a scheduled HTTP call and a generator run, not a transform that benefits from declarative orchestration.
+Both sources write directly to bronze. There is no landing layer because both the TfL API and Faker generator produce typed, structured responses. Point-in-time replay is preserved instead via a `raw_payload` column on each bronze table — the verbatim API or generator response alongside the parsed columns.
 
 | Table | Description |
 |---|---|
 | `bronze.default.tfl_arrivals` | TfL tube line status per station-line combination. `raw_payload` + parsed fields + `ingested_at`. Liquid-clustered on `(line_id, ingested_at)`. |
 | `bronze.default.customer_profiles` | Synthetic customer profiles. `raw_payload` + parsed fields + `ingested_at`. Overwritten each run. |
 
-**Bronze access**: zero group grants. Only the job's service principal reads/writes bronze. Run `python tests/test_bronze_access.py` to assert this is enforced.
+**Bronze access**: zero group grants. Only the pipeline service principal reads/writes bronze. Run `python tests/test_bronze_access.py` to assert this is enforced.
 
 ### Silver → Gold — Lakeflow Spark Declarative Pipelines
 
-Two separate pipelines (silver and gold) handle the transform layer. Declarative Pipelines (formerly DLT) earn their place here: automatic orchestration, retry, lineage, and data quality expectations are all valuable for transforms, unlike the straightforward ingestion step above.
+Two separate pipelines handle the transform layer. Declarative Pipelines (formerly DLT) earn their place here: automatic orchestration, retry, lineage, and data quality expectations are all valuable for transforms.
 
 | Table | Contains PII | Description |
 |---|---|---|
@@ -54,13 +58,17 @@ Two separate pipelines (silver and gold) handle the transform layer. Declarative
 - `customer_journeys`: valid email format, `home_station` not null, `date_of_birth` plausible (not in future, not before 1900).
 - `disruption_summary`: `disruption_date` not null, `line_id` matches known TfL line reference list.
 
+### Lakehouse Monitoring
+
+`setup_monitors` runs as the final task in the pipeline job after gold completes. It creates time-series Lakehouse monitors on `silver.default.customer_journeys` and `gold.default.disruption_summary` using the Databricks SDK — idempotent, no manual steps required on environment rebuild.
+
 ---
 
 ## Governance
 
-**Data classification**: Run Databricks agentic Data Classification on `silver` and `gold` after the pipeline populates the tables. The classifier will tag `full_name`, `email`, `date_of_birth`, and `home_postcode` automatically against its built-in PII taxonomy. Do not hand-tag these columns.
+**Data classification**: Run Databricks agentic Data Classification on `silver` and `gold` after the pipeline populates the tables. The classifier will tag `full_name`, `email`, `date_of_birth`, and `home_postcode` automatically. Do not hand-tag these columns.
 
-**Entra groups** (must be pre-created in Azure before running governance setup):
+**Entra groups** (pre-created in Azure via `simple-databricks-deployment`):
 
 | Group | Access |
 |---|---|
@@ -68,57 +76,50 @@ Two separate pipelines (silver and gold) handle the transform layer. Declarative
 | `sg-dbplat-pii-readers` | Silver and gold — PII columns unmasked (ABAC `EXCEPT` group) |
 | `sg-dbplat-data-stewards` | Full visibility, manages governed tags and ABAC policies |
 
-**ABAC column masking**: `src/governance/setup_abac.py` creates a `pii_mask` function in both catalogs that returns the raw value for `sg-dbplat-pii-readers` and `sg-dbplat-data-stewards`, and `'***MASKED***'` for everyone else. The mask is applied to `full_name`, `email`, and `home_postcode` in `customer_journeys`, and `full_name` and `email` in `notification_targets`.
-
-**Observability**: Lakehouse Monitoring is configured on `silver.default.customer_journeys` and `gold.default.disruption_summary` for freshness, drift, and anomaly detection.
+**ABAC column masking**: `src/governance/setup_abac.py` creates a `pii_mask` function in both catalogs that returns the raw value for `sg-dbplat-pii-readers` and `sg-dbplat-data-stewards`, and `'***MASKED***'` for everyone else. Applied to `full_name`, `email`, and `home_postcode` in `customer_journeys`, and `full_name` and `email` in `notification_targets`.
 
 ---
 
-## Workspace sync (after each spin-up)
+## CI/CD
 
-The workspace URL and ID are **never hardcoded** in this repo — they change every time the demo workspace is torn down and rebuilt. After each `terraform apply` in `simple-databricks-deployment`:
+Pushes to `master` that touch `src/`, `resources/`, `databricks.yml`, or the workflow file trigger an automated deploy via GitHub Actions.
 
-```powershell
-# 1. Update the Databricks CLI profile with the new workspace URL:
-.\scripts\sync-workspace.ps1
+Authentication uses **OIDC workload identity federation** — no secrets stored. The pipeline service principal (`sp-tfl-pipeline`) exchanges a GitHub-issued OIDC token for a Databricks token at runtime. The federated credential is fully managed by Terraform in `simple-databricks-deployment`.
 
-# 2. Authenticate against the new workspace:
-databricks auth login
-```
+Required GitHub environment secrets (`Settings → Environments → dev`):
 
-That is all. No YAML edits required. `databricks.yml` uses `workspace.profile: DEFAULT` which reads from `~/.databrickscfg`.
+| Secret | Value |
+|---|---|
+| `AZURE_CLIENT_ID` | Application (client) ID of `sp-tfl-pipeline` — from `terraform output pipeline_sp_application_id` |
+| `AZURE_TENANT_ID` | Azure tenant (directory) ID |
+| `DATABRICKS_HOST` | Workspace URL, e.g. `https://adb-xxxx.azuredatabricks.net` |
 
 ---
 
 ## Deploy sequence
 
+### First-time setup
+
 ```powershell
-# Validate bundle config (no deployment):
+# 1. After terraform apply in simple-databricks-deployment, sync the workspace URL:
+.\scripts\sync-workspace.ps1   # in simple-databricks-deployment
+
+# 2. Authenticate the CLI:
+databricks auth login
+
+# 3. Validate and deploy all bundle assets:
 databricks bundle validate
-
-# Deploy jobs, pipelines, and monitors:
 databricks bundle deploy
 
-# Populate bronze tables (first run):
-databricks bundle run bronze-ingestion
-
-# Run the silver pipeline (creates customer_journeys):
-databricks bundle run silver-pipeline
-
-# Run the gold pipeline (creates disruption_summary and notification_targets):
-databricks bundle run gold-pipeline
-
-# Re-deploy to activate Lakehouse Monitors (tables must exist):
-databricks bundle deploy
-
-# Apply ABAC masking policies and catalog grants (run once):
+# 4. Apply ABAC masking policies (one-off, re-run after policy changes):
 databricks bundle run governance-setup
-
-# Verify bronze is blocked to reader groups:
-python tests/test_bronze_access.py
 ```
 
-Lakehouse Monitors are bundled in the DAB but require the target tables to exist at deploy time. The second `databricks bundle deploy` (after the pipelines have run) deploys them successfully.
+The `tfl-pipeline` job runs automatically on its 15-minute schedule from that point: bronze ingestion, silver pipeline, gold pipeline, and monitor creation all happen without further intervention.
+
+### After workspace rebuild
+
+The same four steps above. No manual edits to any YAML files.
 
 ---
 
@@ -127,7 +128,8 @@ Lakehouse Monitors are bundled in the DAB but require the target tables to exist
 ```bash
 databricks bundle validate          # check bundle config without deploying
 databricks bundle deploy            # deploy/update all assets
-databricks bundle run <job-name>    # trigger a job or pipeline run
+databricks bundle run tfl-pipeline  # trigger a manual end-to-end run
+databricks bundle run governance-setup  # re-apply ABAC policies
 databricks bundle destroy           # remove all deployed assets
 ```
 
@@ -138,7 +140,7 @@ databricks bundle destroy           # remove all deployed assets
 | Item | Reason |
 |---|---|
 | **Landing layer** | Both sources are typed, structured responses. `raw_payload` preserves the audit trail that a landing layer would otherwise justify. |
-| **Change Data Feed / AUTO CDC** | No genuinely evolving upstream records. Synthetic profiles are single-generation; TfL API is polled fresh each run. Revisit if profile generation is extended to simulate updates. |
+| **Change Data Feed / AUTO CDC** | No genuinely evolving upstream records. Synthetic profiles are single-generation; TfL API is polled fresh each run. |
 | **Forecasting / ML** | Possible future MLOps phase. Not folded into this data engineering focused repo. |
 | **Lakeflow Connect** | Built for SaaS/database ingestion. The source here is a REST API called directly — Connect adds no value. |
 | **Lakeflow Designer** | No-code tool aimed at citizen developers. Using it here would undercut the hands-on engineering depth this project demonstrates. |
