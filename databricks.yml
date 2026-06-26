@@ -10,6 +10,14 @@ bundle:
 workspace:
   profile: DEFAULT
 
+variables:
+  pipeline_sp_application_id:
+    description: >
+      Application (client) ID of the pipeline service principal.
+      Retrieve after infra apply: terraform output pipeline_sp_application_id
+      (in simple-databricks-deployment).
+    default: "a4737147-0767-4868-b479-eb9cd88e0dbd"
+
 targets:
   dev:
     mode: development

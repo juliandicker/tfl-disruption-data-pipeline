@@ -4,6 +4,9 @@ resources:
       name: bronze-ingestion
       description: "Ingests TfL tube line status and synthetic customer profiles into bronze Delta tables."
 
+      run_as:
+        service_principal_name: ${var.pipeline_sp_application_id}
+
       schedule:
         quartz_cron_expression: "0 0/15 * * * ?"
         timezone_id: "Europe/London"

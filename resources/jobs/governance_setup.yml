@@ -2,6 +2,10 @@ resources:
   jobs:
     governance_setup:
       name: governance-setup
+
+      run_as:
+        service_principal_name: ${var.pipeline_sp_application_id}
+
       description: >
         One-off job that applies ABAC column masking policies and Unity Catalog grants for
         silver and gold. Run once after the pipeline has populated the tables. Idempotent —

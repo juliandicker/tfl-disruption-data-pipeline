@@ -12,3 +12,7 @@ resources:
             path: src/pipeline/silver.py
       continuous: false
       development: false
+
+      permissions:
+        - service_principal_name: ${var.pipeline_sp_application_id}
+          level: IS_OWNER
