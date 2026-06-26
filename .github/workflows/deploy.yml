@@ -1,0 +1,47 @@
+name: Databricks Bundle Deploy
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - "src/**"
+      - "resources/**"
+      - "databricks.yml"
+  workflow_dispatch:
+
+permissions:
+  id-token: write  # required for OIDC token exchange
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: dev
+
+    steps:
+      - uses: actions/checkout@v5
+
+      # Reuses the same OIDC federation already set up for the Terraform workflows.
+      # The dbplat-simple-github-actions SP authenticates to Azure without any stored secret.
+      - name: Azure login (OIDC)
+        uses: azure/login@v3
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - uses: databricks/setup-cli@main
+
+      # Exchange the Azure AD token for a Databricks-scoped token.
+      # Resource ID 2ff814a6-3304-4ab8-85cb-cd0e6f879c1d is the well-known Azure Databricks app.
+      # No client secret is stored anywhere — the OIDC token does the work.
+      - name: Exchange Azure token for Databricks token
+        run: |
+          echo "DATABRICKS_TOKEN=$(az account get-access-token \
+            --resource 2ff814a6-3304-4ab8-85cb-cd0e6f879c1d \
+            --query accessToken -o tsv)" >> $GITHUB_ENV
+
+      - name: Deploy bundle
+        run: databricks bundle deploy
+        env:
+          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
