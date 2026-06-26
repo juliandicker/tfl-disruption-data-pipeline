@@ -26,4 +26,6 @@ targets:
 include:
   - resources/jobs/*.yml
   - resources/pipelines/*.yml
-  - resources/monitors/*.yml
+  # Monitors require the tables to exist — deploy separately after the first pipeline run:
+  #   databricks bundle deploy (with monitors uncommented, once silver/gold tables exist)
+  # - resources/monitors/*.yml
