@@ -1,3 +1,4 @@
+# Databricks notebook source
 """
 Lakeflow Spark Declarative Pipeline — silver layer
 
