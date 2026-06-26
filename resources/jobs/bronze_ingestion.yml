@@ -19,6 +19,7 @@ resources:
             dependencies:
               - requests
               - faker
+              - databricks-sdk
 
       tasks:
         - task_key: ingest_tfl
@@ -47,3 +48,11 @@ resources:
             - task_key: run_silver_pipeline
           pipeline_task:
             pipeline_id: ${resources.pipelines.gold_pipeline.id}
+
+        - task_key: setup_monitors
+          description: "Creates Lakehouse monitors for silver and gold tables (idempotent)."
+          depends_on:
+            - task_key: run_gold_pipeline
+          environment_key: default
+          spark_python_task:
+            python_file: ${workspace.file_path}/src/observability/setup_monitors.py
