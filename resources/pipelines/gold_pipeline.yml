@@ -2,14 +2,13 @@ resources:
   pipelines:
     gold_pipeline:
       name: gold-pipeline
-      description: "Transforms silver.default.customer_journeys into gold aggregates and notification targets."
       catalog: gold
       schema: default
       serverless: true
       channel: CURRENT
       libraries:
         - notebook:
-            path: src/pipeline/gold.py
+            path: ${workspace.file_path}/src/pipeline/gold.py
       continuous: false
       development: false
 

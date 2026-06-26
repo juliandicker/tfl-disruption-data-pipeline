@@ -15,4 +15,4 @@ resources:
         - task_key: apply_abac
           description: "Creates masking functions, applies column masks, and sets catalog grants."
           spark_python_task:
-            python_file: /Workspace${workspace.file_path}/src/governance/setup_abac.py
+            python_file: ${workspace.file_path}/src/governance/setup_abac.py

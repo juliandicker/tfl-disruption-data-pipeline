@@ -25,10 +25,10 @@ resources:
           description: "Fetches TfL tube line status and disruption data via the public API."
           environment_key: default
           spark_python_task:
-            python_file: /Workspace${workspace.file_path}/src/bronze/ingest_tfl.py
+            python_file: ${workspace.file_path}/src/bronze/ingest_tfl.py
 
         - task_key: generate_profiles
           description: "Generates synthetic customer profiles using Faker and writes them to bronze."
           environment_key: default
           spark_python_task:
-            python_file: /Workspace${workspace.file_path}/src/bronze/generate_profiles.py
+            python_file: ${workspace.file_path}/src/bronze/generate_profiles.py
