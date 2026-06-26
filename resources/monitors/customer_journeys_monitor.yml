@@ -1,0 +1,13 @@
+resources:
+  quality_monitors:
+    customer_journeys_monitor:
+      table_name: silver.default.customer_journeys
+      assets_dir: /Shared/monitors/customer_journeys
+      output_schema_name: silver.default
+      time_series:
+        timestamp_col: ingested_at
+        granularities:
+          - "1 day"
+      schedule:
+        quartz_cron_expression: "0 0 6 * * ?"
+        timezone_id: "Europe/London"

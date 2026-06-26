@@ -1,0 +1,21 @@
+bundle:
+  name: tfl-disruption-data-pipeline
+
+# Workspace host is resolved from the Databricks CLI auth profile (~/.databrickscfg).
+# After each `terraform apply` in simple-databricks-deployment, run:
+#   .\scripts\sync-workspace.ps1
+# then:
+#   databricks auth login
+# No workspace URLs are hardcoded here — spin up a new workspace and re-run those two commands.
+workspace:
+  profile: DEFAULT
+
+targets:
+  dev:
+    mode: development
+    default: true
+
+include:
+  - resources/jobs/*.yml
+  - resources/pipelines/*.yml
+  - resources/monitors/*.yml

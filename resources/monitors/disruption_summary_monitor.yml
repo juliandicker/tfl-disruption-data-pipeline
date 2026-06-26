@@ -1,0 +1,13 @@
+resources:
+  quality_monitors:
+    disruption_summary_monitor:
+      table_name: gold.default.disruption_summary
+      assets_dir: /Shared/monitors/disruption_summary
+      output_schema_name: gold.default
+      time_series:
+        timestamp_col: disruption_date
+        granularities:
+          - "1 day"
+      schedule:
+        quartz_cron_expression: "0 0 6 * * ?"
+        timezone_id: "Europe/London"

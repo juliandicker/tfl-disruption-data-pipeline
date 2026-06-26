@@ -1,0 +1,40 @@
+resources:
+  jobs:
+    bronze_ingestion:
+      name: bronze-ingestion
+      description: "Ingests TfL tube line status and synthetic customer profiles into bronze Delta tables."
+
+      schedule:
+        quartz_cron_expression: "0 0/15 * * * ?"
+        timezone_id: "Europe/London"
+        pause_status: UNPAUSED
+
+      job_clusters:
+        - job_cluster_key: bronze_cluster
+          new_cluster:
+            spark_version: "15.4.x-scala2.12"
+            node_type_id: "Standard_DS3_v2"
+            num_workers: 0
+            spark_conf:
+              spark.databricks.cluster.profile: singleNode
+              spark.master: "local[*]"
+            data_security_mode: SINGLE_USER
+
+      tasks:
+        - task_key: ingest_tfl
+          description: "Fetches TfL tube line status and disruption data via the public API."
+          job_cluster_key: bronze_cluster
+          spark_python_task:
+            python_file: /Workspace${workspace.file_path}/src/bronze/ingest_tfl.py
+          libraries:
+            - pypi:
+                package: requests
+
+        - task_key: generate_profiles
+          description: "Generates synthetic customer profiles using Faker and writes them to bronze."
+          job_cluster_key: bronze_cluster
+          spark_python_task:
+            python_file: /Workspace${workspace.file_path}/src/bronze/generate_profiles.py
+          libraries:
+            - pypi:
+                package: faker

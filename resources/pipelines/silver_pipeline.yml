@@ -1,0 +1,14 @@
+resources:
+  pipelines:
+    silver_pipeline:
+      name: silver-pipeline
+      description: "Transforms bronze tables into silver.default.customer_journeys with data quality expectations."
+      catalog: silver
+      schema: default
+      serverless: true
+      channel: CURRENT
+      libraries:
+        - notebook:
+            path: src/pipeline/silver.py
+      continuous: false
+      development: false
