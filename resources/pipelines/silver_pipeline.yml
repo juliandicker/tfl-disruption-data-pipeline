@@ -7,8 +7,8 @@ resources:
       serverless: true
       channel: CURRENT
       libraries:
-        - notebook:
-            path: ${workspace.file_path}/src/pipeline/silver.py
+        - file:
+            path: /Workspace${workspace.file_path}/src/pipeline/silver.py
       continuous: false
       development: false
 

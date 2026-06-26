@@ -1,4 +1,3 @@
-# Databricks notebook source
 """
 Lakeflow Spark Declarative Pipeline — gold layer
 
