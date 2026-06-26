@@ -32,3 +32,18 @@ resources:
           environment_key: default
           spark_python_task:
             python_file: ${workspace.file_path}/src/bronze/generate_profiles.py
+
+        - task_key: run_silver_pipeline
+          description: "Runs the silver Declarative Pipeline after both bronze tasks complete."
+          depends_on:
+            - task_key: ingest_tfl
+            - task_key: generate_profiles
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.silver_pipeline.id}
+
+        - task_key: run_gold_pipeline
+          description: "Runs the gold Declarative Pipeline after silver completes."
+          depends_on:
+            - task_key: run_silver_pipeline
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.gold_pipeline.id}
