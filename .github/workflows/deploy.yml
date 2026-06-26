@@ -7,6 +7,7 @@ on:
       - "src/**"
       - "resources/**"
       - "databricks.yml"
+      - ".github/workflows/deploy.yml"
 permissions:
   id-token: write  # required for OIDC token exchange
   contents: read
