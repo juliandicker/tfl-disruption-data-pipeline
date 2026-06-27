@@ -1,4 +1,5 @@
 from databricks.sdk import WorkspaceClient
+from databricks.sdk.errors import NotFound, ResourceDoesNotExist
 
 w = WorkspaceClient()
 
@@ -24,9 +25,7 @@ for m in MONITORS:
     try:
         w.api_client.do("GET", f"/api/2.1/unity-catalog/tables/{table}/monitor")
         print(f"Monitor already exists: {table}")
-    except Exception as e:
-        if "RESOURCE_DOES_NOT_EXIST" not in str(e) and "404" not in str(e):
-            raise
+    except (NotFound, ResourceDoesNotExist):
         print(f"Creating monitor: {table}")
         w.api_client.do(
             "POST",
