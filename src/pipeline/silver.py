@@ -1,49 +1,33 @@
 """
 Lakeflow Spark Declarative Pipeline — silver layer
 
-Reads bronze tables and produces silver.tfl.customer_journeys:
-a cleaned, deduplicated join of synthetic customer profiles to TfL
-disruption data on home_station. Contains PII; ABAC masking is applied
-by the governance-setup job on full_name, email, and home_postcode.
+Produces silver.tfl.customer_journeys as a streaming table (SCD Type 1):
+the latest disruption state per customer-line pair, maintained by
+dlt.apply_changes() on keys (customer_id, line_id) sequenced by ingested_at.
+
+A streaming table (Delta-backed) is required — not a materialized view —
+so that Unity Catalog column masks can be applied to PII columns by the
+governance-setup job. Materialized views are view objects in UC and do not
+support ALTER TABLE ... ALTER COLUMN ... SET MASK.
 """
 
 import dlt
 from pyspark.sql import functions as F
-from pyspark.sql.window import Window
 
 
-@dlt.table(
-    name="customer_journeys",
-    comment=(
-        "Cleaned, deduplicated join of synthetic customer profiles to TfL tube line status "
-        "on home_station. Contains PII (full_name, email, home_postcode) — see ABAC policy. "
-        "Liquid-clustered on home_station and customer_id."
-    ),
-    cluster_by=["home_station", "customer_id"],
-)
-@dlt.expect_or_drop(
-    "valid_email",
-    r"email RLIKE '^[A-Za-z0-9._%+\\-]+@[A-Za-z0-9.\\-]+\\.[A-Za-z]{2,}$'",
-)
-@dlt.expect_or_drop("home_station_not_null", "home_station IS NOT NULL")
-@dlt.expect_or_drop(
-    "dob_plausible",
-    "date_of_birth < current_date() AND date_of_birth > date '1900-01-01'",
-)
-def customer_journeys():
+@dlt.view(name="customer_journeys_raw")
+def customer_journeys_raw():
     bronze = spark.conf.get("bronze_catalog", "bronze")
     schema = spark.conf.get("schema", "tfl")
-    arrivals = spark.table(f"{bronze}.{schema}.tfl_arrivals")
+    arrivals = dlt.read_stream(f"{bronze}.{schema}.tfl_arrivals")
     profiles = spark.table(f"{bronze}.{schema}.customer_profiles")
 
-    # Left join so customers with no current disruption on their line are still present.
-    # status_severity < 10 means something other than "Good Service" is reported.
     disrupted = arrivals.filter(F.col("status_severity") < 10)
 
-    joined = profiles.join(
+    return profiles.join(
         disrupted,
         profiles.home_station == disrupted.station_name,
-        "left",
+        "inner",
     ).select(
         profiles.customer_id,
         profiles.full_name,
@@ -62,11 +46,26 @@ def customer_journeys():
         disrupted.ingested_at,
     )
 
-    # Deduplicate: keep the most recent record per customer-line pair.
-    w = Window.partitionBy("customer_id", "line_id").orderBy(F.col("ingested_at").desc())
-    return (
-        joined
-        .withColumn("_rn", F.row_number().over(w))
-        .filter(F.col("_rn") == 1)
-        .drop("_rn")
-    )
+
+dlt.create_streaming_table(
+    name="customer_journeys",
+    comment=(
+        "Latest disruption state per customer-line pair. "
+        "Contains PII (full_name, email, home_postcode) — see ABAC policy. "
+        "Liquid-clustered on home_station and customer_id."
+    ),
+    cluster_by=["home_station", "customer_id"],
+    expect_or_drop={
+        "valid_email": r"email RLIKE '^[A-Za-z0-9._%+\\-]+@[A-Za-z0-9.\\-]+\\.[A-Za-z]{2,}$'",
+        "home_station_not_null": "home_station IS NOT NULL",
+        "dob_plausible": "date_of_birth < current_date() AND date_of_birth > date '1900-01-01'",
+    },
+)
+
+dlt.apply_changes(
+    target="customer_journeys",
+    source="customer_journeys_raw",
+    keys=["customer_id", "line_id"],
+    sequence_by=F.col("ingested_at"),
+    stored_as_scd_type=1,
+)

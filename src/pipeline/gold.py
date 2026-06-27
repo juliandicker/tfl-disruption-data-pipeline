@@ -1,13 +1,14 @@
 """
 Lakeflow Spark Declarative Pipeline — gold layer
 
-Reads silver.tfl.customer_journeys and produces:
-  - gold.tfl.disruption_summary: aggregated counts, no PII.
-  - gold.tfl.notification_targets: one row per affected customer ready for alerting.
-    Still contains email because the alerting use case requires it.
-    Aggregation does not equal anonymisation — this table remains PII-bearing.
-
-This pipeline targets the gold catalog (set in gold_pipeline.yml).
+Produces:
+  - gold.tfl.disruption_summary: aggregated counts, no PII. Materialized view
+    is correct here — aggregations re-compute naturally on refresh and no UC
+    column masks are needed.
+  - gold.tfl.notification_targets: one row per affected customer per disrupted
+    line, ready for alerting. Contains PII (full_name, email). Must be a
+    streaming table (Delta-backed) so UC column masks can be applied by the
+    governance-setup job.
 """
 
 import dlt
@@ -37,7 +38,6 @@ def disruption_summary():
     schema = spark.conf.get("schema", "tfl")
     return (
         spark.table(f"{silver}.{schema}.customer_journeys")
-        .filter(F.col("line_id").isNotNull())
         .withColumn("disruption_date", F.to_date("ingested_at"))
         .groupBy("line_id", "line_name", "disruption_date", "status_severity_description")
         .agg(
@@ -49,20 +49,12 @@ def disruption_summary():
     )
 
 
-@dlt.table(
-    name="notification_targets",
-    comment=(
-        "One row per affected customer per disrupted line, ready for alerting. "
-        "Contains email — aggregation does not equal anonymisation. "
-        "ABAC masking policy applies to email for standard-readers."
-    ),
-)
-def notification_targets():
+@dlt.view(name="notification_targets_raw")
+def notification_targets_raw():
     silver = spark.conf.get("silver_catalog", "silver")
     schema = spark.conf.get("schema", "tfl")
     return (
-        spark.table(f"{silver}.{schema}.customer_journeys")
-        .filter(F.col("line_id").isNotNull())
+        dlt.read_stream(f"{silver}.{schema}.customer_journeys")
         .select(
             "customer_id",
             "full_name",
@@ -75,5 +67,22 @@ def notification_targets():
             "disruption_description",
             "ingested_at",
         )
-        .distinct()
     )
+
+
+dlt.create_streaming_table(
+    name="notification_targets",
+    comment=(
+        "One row per affected customer per disrupted line, ready for alerting. "
+        "Contains email — aggregation does not equal anonymisation. "
+        "ABAC masking policy applies to full_name and email for standard-readers."
+    ),
+)
+
+dlt.apply_changes(
+    target="notification_targets",
+    source="notification_targets_raw",
+    keys=["customer_id", "line_id"],
+    sequence_by=F.col("ingested_at"),
+    stored_as_scd_type=1,
+)
