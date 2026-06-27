@@ -15,6 +15,9 @@ import dlt
 from pyspark.sql import functions as F
 
 
+_EMAIL_RE = r"^[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}$"
+
+
 @dlt.view(name="customer_journeys_raw")
 def customer_journeys_raw():
     bronze = spark.conf.get("bronze_catalog", "bronze")
@@ -24,26 +27,37 @@ def customer_journeys_raw():
 
     disrupted = arrivals.filter(F.col("status_severity") < 10)
 
-    return profiles.join(
-        disrupted,
-        profiles.home_station == disrupted.station_name,
-        "inner",
-    ).select(
-        profiles.customer_id,
-        profiles.full_name,
-        profiles.email,
-        profiles.date_of_birth,
-        profiles.home_postcode,
-        profiles.card_id,
-        profiles.home_station,
-        disrupted.line_id,
-        disrupted.line_name,
-        disrupted.status_severity,
-        disrupted.status_severity_description,
-        disrupted.disruption_reason,
-        disrupted.disruption_description,
-        disrupted.affected_stops_json,
-        disrupted.ingested_at,
+    return (
+        profiles.join(
+            disrupted,
+            profiles.home_station == disrupted.station_name,
+            "inner",
+        )
+        .select(
+            profiles.customer_id,
+            profiles.full_name,
+            profiles.email,
+            profiles.date_of_birth,
+            profiles.home_postcode,
+            profiles.card_id,
+            profiles.home_station,
+            disrupted.line_id,
+            disrupted.line_name,
+            disrupted.status_severity,
+            disrupted.status_severity_description,
+            disrupted.disruption_reason,
+            disrupted.disruption_description,
+            disrupted.affected_stops_json,
+            disrupted.ingested_at,
+        )
+        # Data quality filters: equivalent to expect_or_drop — invalid rows are
+        # dropped here so apply_changes never processes them.
+        .filter(F.col("home_station").isNotNull())
+        .filter(F.col("email").rlike(_EMAIL_RE))
+        .filter(
+            (F.col("date_of_birth") < F.current_date())
+            & (F.col("date_of_birth") > F.lit("1900-01-01").cast("date"))
+        )
     )
 
 
@@ -55,11 +69,6 @@ dlt.create_streaming_table(
         "Liquid-clustered on home_station and customer_id."
     ),
     cluster_by=["home_station", "customer_id"],
-    expect_or_drop={
-        "valid_email": r"email RLIKE '^[A-Za-z0-9._%+\\-]+@[A-Za-z0-9.\\-]+\\.[A-Za-z]{2,}$'",
-        "home_station_not_null": "home_station IS NOT NULL",
-        "dob_plausible": "date_of_birth < current_date() AND date_of_birth > date '1900-01-01'",
-    },
 )
 
 dlt.apply_changes(
