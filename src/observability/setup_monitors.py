@@ -1,19 +1,31 @@
+import argparse
+
 from databricks.sdk import WorkspaceClient
 from databricks.sdk.errors import NotFound, ResourceDoesNotExist
+
+_parser = argparse.ArgumentParser()
+_parser.add_argument("--silver-catalog", default="silver")
+_parser.add_argument("--gold-catalog", default="gold")
+_parser.add_argument("--schema", default="tfl")
+_args, _ = _parser.parse_known_args()
+
+silver = _args.silver_catalog
+gold = _args.gold_catalog
+schema = _args.schema
 
 w = WorkspaceClient()
 
 MONITORS = [
     {
-        "table_name": "silver.default.customer_journeys",
+        "table_name": f"{silver}.{schema}.customer_journeys",
         "assets_dir": "/Shared/monitors/customer_journeys",
-        "output_schema_name": "silver.default",
+        "output_schema_name": f"{silver}.{schema}",
         "time_series": {"timestamp_col": "ingested_at", "granularities": ["1 day"]},
     },
     {
-        "table_name": "gold.default.disruption_summary",
+        "table_name": f"{gold}.{schema}.disruption_summary",
         "assets_dir": "/Shared/monitors/disruption_summary",
-        "output_schema_name": "gold.default",
+        "output_schema_name": f"{gold}.{schema}",
         "time_series": {"timestamp_col": "disruption_date", "granularities": ["1 day"]},
     },
 ]

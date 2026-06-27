@@ -1,5 +1,5 @@
 """
-TfL tube line status ingestion → bronze.default.tfl_arrivals
+TfL tube line status ingestion → bronze.tfl.tfl_arrivals
 
 Fetches current status and disruption data from the TfL Open Data API and writes
 one row per station-line combination per ingestion run. The verbatim API response
@@ -8,6 +8,7 @@ is preserved in raw_payload alongside the parsed columns.
 TfL API key is optional (set TFL_APP_KEY env var for higher rate limits).
 """
 
+import argparse
 import json
 import os
 from datetime import datetime, timezone
@@ -20,6 +21,11 @@ spark = SparkSession.builder.getOrCreate()
 
 TFL_BASE = "https://api.tfl.gov.uk"
 APP_KEY = os.getenv("TFL_APP_KEY", "")
+
+_parser = argparse.ArgumentParser()
+_parser.add_argument("--catalog", default="bronze")
+_parser.add_argument("--schema", default="tfl")
+_args, _ = _parser.parse_known_args()
 
 # Maps each real TfL station name to the tube lines that serve it.
 # Keeps station names in sync with the list used by generate_profiles.py.
@@ -90,6 +96,9 @@ def _get(path: str) -> list:
 
 
 def main():
+    catalog = _args.catalog
+    schema = _args.schema
+    table = f"{catalog}.{schema}.tfl_arrivals"
     ingested_at = datetime.now(timezone.utc)
 
     line_statuses = _get("/line/mode/tube/status")
@@ -124,8 +133,10 @@ def main():
         print("No rows to write — TfL API returned no line data.")
         return
 
-    spark.sql("""
-        CREATE TABLE IF NOT EXISTS bronze.default.tfl_arrivals (
+    spark.sql(f"CREATE SCHEMA IF NOT EXISTS {catalog}.{schema}")
+
+    spark.sql(f"""
+        CREATE TABLE IF NOT EXISTS {table} (
             raw_payload                 STRING  COMMENT 'Verbatim TfL API line response as JSON.',
             line_id                     STRING,
             line_name                   STRING,
@@ -147,8 +158,8 @@ def main():
         .withColumn("status_severity", F.col("status_severity").cast("int"))
     )
 
-    df.write.format("delta").mode("append").saveAsTable("bronze.default.tfl_arrivals")
-    print(f"Wrote {len(rows)} rows to bronze.default.tfl_arrivals at {ingested_at.isoformat()}")
+    df.write.format("delta").mode("append").saveAsTable(table)
+    print(f"Wrote {len(rows)} rows to {table} at {ingested_at.isoformat()}")
 
 
 main()

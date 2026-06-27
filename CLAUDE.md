@@ -109,9 +109,9 @@ Provisioned and managed by `C:\source\simple-databricks-deployment`. Do not modi
 
 ```
 Metastore (uksouth)
-├── bronze  → schema: default
-├── silver  → schema: default
-└── gold    → schema: default
+├── bronze  → schema: tfl
+├── silver  → schema: tfl
+└── gold    → schema: tfl
 ```
 
 Storage account: `dbplatsimpleadls` (resource group: `dbplat-simple-rg`)

@@ -18,6 +18,22 @@ variables:
       (in simple-databricks-deployment).
     default: "a4737147-0767-4868-b479-eb9cd88e0dbd"
 
+  bronze_catalog:
+    description: Unity Catalog name for the bronze (raw ingestion) layer.
+    default: "bronze"
+
+  silver_catalog:
+    description: Unity Catalog name for the silver (curated) layer.
+    default: "silver"
+
+  gold_catalog:
+    description: Unity Catalog name for the gold (presentation) layer.
+    default: "gold"
+
+  schema:
+    description: Schema name used within every catalog layer.
+    default: "tfl"
+
 targets:
   dev:
     mode: development

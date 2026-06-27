@@ -6,8 +6,8 @@ Idempotent: uses CREATE OR REPLACE for functions and IF NOT EXISTS guards where 
 
 What this does:
   1. Creates PII masking functions in silver and gold catalogs.
-  2. Applies column masks to PII columns in silver.default.customer_journeys
-     and gold.default.notification_targets.
+  2. Applies column masks to PII columns in silver.tfl.customer_journeys
+     and gold.tfl.notification_targets.
   3. Grants silver and gold catalog access to the reader Entra groups.
 
 Prerequisites:
@@ -16,9 +16,21 @@ Prerequisites:
   - The job's service principal must have MANAGE privilege on silver/gold catalogs.
 """
 
+import argparse
+
 from pyspark.sql import SparkSession
 
 spark = SparkSession.builder.getOrCreate()
+
+_parser = argparse.ArgumentParser()
+_parser.add_argument("--silver-catalog", default="silver")
+_parser.add_argument("--gold-catalog", default="gold")
+_parser.add_argument("--schema", default="tfl")
+_args, _ = _parser.parse_known_args()
+
+silver_catalog = _args.silver_catalog
+gold_catalog = _args.gold_catalog
+schema = _args.schema
 
 
 def sql(statement: str) -> None:
@@ -32,9 +44,9 @@ def sql(statement: str) -> None:
 #    All other principals see the masked value.
 # ---------------------------------------------------------------------------
 
-for catalog in ("silver", "gold"):
+for catalog in (silver_catalog, gold_catalog):
     sql(f"""
-        CREATE OR REPLACE FUNCTION {catalog}.default.pii_mask(val STRING)
+        CREATE OR REPLACE FUNCTION {catalog}.{schema}.pii_mask(val STRING)
         RETURNS STRING
         RETURN IF(
             IS_ACCOUNT_GROUP_MEMBER('sg-dbplat-pii-readers')
@@ -51,17 +63,17 @@ for catalog in ("silver", "gold"):
 SILVER_PII_COLS = ["full_name", "email", "home_postcode"]
 for col in SILVER_PII_COLS:
     sql(f"""
-        ALTER TABLE silver.default.customer_journeys
+        ALTER TABLE {silver_catalog}.{schema}.customer_journeys
         ALTER COLUMN {col}
-        SET MASK silver.default.pii_mask
+        SET MASK {silver_catalog}.{schema}.pii_mask
     """)
 
 GOLD_NOTIFICATION_PII_COLS = ["full_name", "email"]
 for col in GOLD_NOTIFICATION_PII_COLS:
     sql(f"""
-        ALTER TABLE gold.default.notification_targets
+        ALTER TABLE {gold_catalog}.{schema}.notification_targets
         ALTER COLUMN {col}
-        SET MASK gold.default.pii_mask
+        SET MASK {gold_catalog}.{schema}.pii_mask
     """)
 
 # ---------------------------------------------------------------------------
@@ -69,7 +81,7 @@ for col in GOLD_NOTIFICATION_PII_COLS:
 #    Bronze intentionally receives zero group grants.
 # ---------------------------------------------------------------------------
 
-for catalog in ("silver", "gold"):
+for catalog in (silver_catalog, gold_catalog):
     sql(f"""
         GRANT USE_CATALOG, USE_SCHEMA, SELECT
         ON CATALOG {catalog}

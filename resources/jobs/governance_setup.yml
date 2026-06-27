@@ -22,3 +22,10 @@ resources:
           environment_key: default
           spark_python_task:
             python_file: ${workspace.file_path}/src/governance/setup_abac.py
+            parameters:
+              - "--silver-catalog"
+              - "${var.silver_catalog}"
+              - "--gold-catalog"
+              - "${var.gold_catalog}"
+              - "--schema"
+              - "${var.schema}"

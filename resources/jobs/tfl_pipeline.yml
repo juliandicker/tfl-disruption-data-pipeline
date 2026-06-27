@@ -29,12 +29,22 @@ resources:
           environment_key: default
           spark_python_task:
             python_file: ${workspace.file_path}/src/bronze/ingest_tfl.py
+            parameters:
+              - "--catalog"
+              - "${var.bronze_catalog}"
+              - "--schema"
+              - "${var.schema}"
 
         - task_key: generate_profiles
           description: "Generates synthetic customer profiles using Faker and writes them to bronze."
           environment_key: default
           spark_python_task:
             python_file: ${workspace.file_path}/src/bronze/generate_profiles.py
+            parameters:
+              - "--catalog"
+              - "${var.bronze_catalog}"
+              - "--schema"
+              - "${var.schema}"
 
         - task_key: run_silver_pipeline
           description: "Runs the silver Declarative Pipeline after both bronze tasks complete."
@@ -58,3 +68,10 @@ resources:
           environment_key: default
           spark_python_task:
             python_file: ${workspace.file_path}/src/observability/setup_monitors.py
+            parameters:
+              - "--silver-catalog"
+              - "${var.silver_catalog}"
+              - "--gold-catalog"
+              - "${var.gold_catalog}"
+              - "--schema"
+              - "${var.schema}"

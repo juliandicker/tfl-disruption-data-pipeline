@@ -2,10 +2,13 @@ resources:
   pipelines:
     silver_pipeline:
       name: silver-pipeline
-      catalog: silver
-      schema: default
+      catalog: ${var.silver_catalog}
+      schema: ${var.schema}
       serverless: true
       channel: CURRENT
+      configuration:
+        bronze_catalog: ${var.bronze_catalog}
+        schema: ${var.schema}
       libraries:
         - file:
             path: /Workspace${workspace.file_path}/src/pipeline/silver.py

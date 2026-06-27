@@ -1,7 +1,7 @@
 """
 Lakeflow Spark Declarative Pipeline — silver layer
 
-Reads bronze tables and produces silver.default.customer_journeys:
+Reads bronze tables and produces silver.tfl.customer_journeys:
 a cleaned, deduplicated join of synthetic customer profiles to TfL
 disruption data on home_station. Contains PII; ABAC masking is applied
 by the governance-setup job on full_name, email, and home_postcode.
@@ -31,8 +31,10 @@ from pyspark.sql.window import Window
     "date_of_birth < current_date() AND date_of_birth > date '1900-01-01'",
 )
 def customer_journeys():
-    arrivals = spark.table("bronze.default.tfl_arrivals")
-    profiles = spark.table("bronze.default.customer_profiles")
+    bronze = spark.conf.get("bronze_catalog", "bronze")
+    schema = spark.conf.get("schema", "tfl")
+    arrivals = spark.table(f"{bronze}.{schema}.tfl_arrivals")
+    profiles = spark.table(f"{bronze}.{schema}.customer_profiles")
 
     # Left join so customers with no current disruption on their line are still present.
     # status_severity < 10 means something other than "Good Service" is reported.

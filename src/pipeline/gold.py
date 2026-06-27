@@ -1,9 +1,9 @@
 """
 Lakeflow Spark Declarative Pipeline — gold layer
 
-Reads silver.default.customer_journeys and produces:
-  - gold.default.disruption_summary: aggregated counts, no PII.
-  - gold.default.notification_targets: one row per affected customer ready for alerting.
+Reads silver.tfl.customer_journeys and produces:
+  - gold.tfl.disruption_summary: aggregated counts, no PII.
+  - gold.tfl.notification_targets: one row per affected customer ready for alerting.
     Still contains email because the alerting use case requires it.
     Aggregation does not equal anonymisation — this table remains PII-bearing.
 
@@ -33,8 +33,10 @@ KNOWN_LINE_IDS = [
     f"line_id IN ({', '.join(repr(l) for l in KNOWN_LINE_IDS)})",
 )
 def disruption_summary():
+    silver = spark.conf.get("silver_catalog", "silver")
+    schema = spark.conf.get("schema", "tfl")
     return (
-        spark.table("silver.default.customer_journeys")
+        spark.table(f"{silver}.{schema}.customer_journeys")
         .filter(F.col("line_id").isNotNull())
         .withColumn("disruption_date", F.to_date("ingested_at"))
         .groupBy("line_id", "line_name", "disruption_date", "status_severity_description")
@@ -56,8 +58,10 @@ def disruption_summary():
     ),
 )
 def notification_targets():
+    silver = spark.conf.get("silver_catalog", "silver")
+    schema = spark.conf.get("schema", "tfl")
     return (
-        spark.table("silver.default.customer_journeys")
+        spark.table(f"{silver}.{schema}.customer_journeys")
         .filter(F.col("line_id").isNotNull())
         .select(
             "customer_id",

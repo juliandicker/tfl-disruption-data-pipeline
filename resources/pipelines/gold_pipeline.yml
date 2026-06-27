@@ -2,10 +2,13 @@ resources:
   pipelines:
     gold_pipeline:
       name: gold-pipeline
-      catalog: gold
-      schema: default
+      catalog: ${var.gold_catalog}
+      schema: ${var.schema}
       serverless: true
       channel: CURRENT
+      configuration:
+        silver_catalog: ${var.silver_catalog}
+        schema: ${var.schema}
       libraries:
         - file:
             path: /Workspace${workspace.file_path}/src/pipeline/gold.py

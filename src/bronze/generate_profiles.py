@@ -1,5 +1,5 @@
 """
-Synthetic customer profile generator → bronze.default.customer_profiles
+Synthetic customer profile generator → bronze.tfl.customer_profiles
 
 Generates fake-but-PII-shaped traveller profiles using the Faker library.
 These represent hypothetical TfL contactless-card registrations and are used
@@ -12,6 +12,7 @@ single-generation synthetic data — there is no genuine change stream to track.
 CDC is excluded by design; see README for rationale.
 """
 
+import argparse
 import json
 import uuid
 from datetime import datetime, timezone
@@ -21,6 +22,11 @@ from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 
 spark = SparkSession.builder.getOrCreate()
+
+_parser = argparse.ArgumentParser()
+_parser.add_argument("--catalog", default="bronze")
+_parser.add_argument("--schema", default="tfl")
+_args, _ = _parser.parse_known_args()
 fake = Faker("en_GB")
 Faker.seed(0)  # reproducible within a single run; seed resets on each job execution
 
@@ -58,12 +64,17 @@ def _generate() -> dict:
 
 
 def main():
+    catalog = _args.catalog
+    schema = _args.schema
+    table = f"{catalog}.{schema}.customer_profiles"
     ingested_at = datetime.now(timezone.utc)
     profiles = [_generate() for _ in range(PROFILE_COUNT)]
     rows = [{**p, "raw_payload": json.dumps(p), "ingested_at": ingested_at} for p in profiles]
 
-    spark.sql("""
-        CREATE TABLE IF NOT EXISTS bronze.default.customer_profiles (
+    spark.sql(f"CREATE SCHEMA IF NOT EXISTS {catalog}.{schema}")
+
+    spark.sql(f"""
+        CREATE TABLE IF NOT EXISTS {table} (
             raw_payload     STRING  COMMENT 'Verbatim synthetic profile record as JSON.',
             customer_id     STRING,
             full_name       STRING,
@@ -83,10 +94,8 @@ def main():
         .withColumn("date_of_birth", F.col("date_of_birth").cast("date"))
     )
 
-    df.write.format("delta").mode("overwrite").option("overwriteSchema", "true").saveAsTable(
-        "bronze.default.customer_profiles"
-    )
-    print(f"Wrote {PROFILE_COUNT} synthetic profiles to bronze.default.customer_profiles")
+    df.write.format("delta").mode("overwrite").option("overwriteSchema", "true").saveAsTable(table)
+    print(f"Wrote {PROFILE_COUNT} synthetic profiles to {table}")
 
 
 main()
