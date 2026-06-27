@@ -1,22 +1,11 @@
 bundle:
   name: tfl-disruption-data-pipeline
 
-# Workspace host is resolved from the Databricks CLI auth profile (~/.databrickscfg).
-# After each `terraform apply` in simple-databricks-deployment, run:
-#   .\scripts\sync-workspace.ps1
-# then:
-#   databricks auth login
-# No workspace URLs are hardcoded here — spin up a new workspace and re-run those two commands.
-workspace:
-  profile: DEFAULT
-
 variables:
   pipeline_sp_application_id:
     description: >
       Application (client) ID of the pipeline service principal.
-      Retrieve after infra apply: terraform output pipeline_sp_application_id
-      (in simple-databricks-deployment).
-    default: "a4737147-0767-4868-b479-eb9cd88e0dbd"
+      Injected at deploy time via --var from the AZURE_CLIENT_ID GitHub secret.
 
   bronze_catalog:
     description: Unity Catalog name for the bronze (raw ingestion) layer.

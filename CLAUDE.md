@@ -12,12 +12,11 @@ Infrastructure (workspace, catalogs, storage, Unity Catalog grants) lives in a s
 
 ```bash
 databricks bundle validate          # check bundle config without deploying
-databricks bundle deploy            # deploy assets to the target workspace
 databricks bundle run <job-name>    # trigger a job or pipeline run
 databricks bundle destroy           # remove deployed assets
 ```
 
-Target workspace is configured in `databricks.yml`. The Databricks CLI must be authenticated (`databricks auth login` or environment variables).
+Deployment goes through GitHub Actions only (`push` to `master` → `.github/workflows/deploy.yml`). Do not run `databricks bundle deploy` locally.
 
 ## Data sources
 
@@ -98,10 +97,10 @@ Provisioned and managed by `C:\source\simple-databricks-deployment`. Do not modi
 
 ### Workspace
 
+The workspace URL and pipeline SP application ID change after each infra rebuild. They are not hardcoded here — the data platform team updates the `DATABRICKS_HOST` and `AZURE_CLIENT_ID` GitHub Actions secrets in this repo automatically after each `terraform apply`.
+
 | | |
 |---|---|
-| URL | `https://adb-7405618976699878.18.azuredatabricks.net` |
-| ID | `7405618976699878` |
 | SKU | Premium (required for Unity Catalog) |
 | Region | `uksouth` |
 

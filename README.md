@@ -82,56 +82,52 @@ Two separate pipelines handle the transform layer. Declarative Pipelines (former
 
 ## CI/CD
 
-Pushes to `master` that touch `src/`, `resources/`, `databricks.yml`, or the workflow file trigger an automated deploy via GitHub Actions.
+### Team model
 
-Authentication uses **OIDC workload identity federation** — no secrets stored. The pipeline service principal (`sp-tfl-pipeline`) exchanges a GitHub-issued OIDC token for a Databricks token at runtime. The federated credential is fully managed by Terraform in `simple-databricks-deployment`.
+This repo is maintained by the data engineering team. The data platform team maintains `simple-databricks-deployment` (Terraform/infra). The only handoff between teams is secrets: after each infra apply, the platform team's pipeline updates two GitHub environment secrets in this repo via a GitHub App.
 
-Required GitHub environment secrets (`Settings → Environments → dev`):
+### Authentication
 
-| Secret | Value |
-|---|---|
-| `AZURE_CLIENT_ID` | Application (client) ID of `sp-tfl-pipeline` — from `terraform output pipeline_sp_application_id` |
-| `AZURE_TENANT_ID` | Azure tenant (directory) ID |
-| `DATABRICKS_HOST` | Workspace URL, e.g. `https://adb-xxxx.azuredatabricks.net` |
+OIDC workload identity federation — no secrets stored. The pipeline service principal (`sp-tfl-pipeline`) exchanges a GitHub-issued OIDC token for a Databricks token at runtime. The federated credential is fully managed by Terraform in `simple-databricks-deployment`.
 
----
+### GitHub environment secrets (`Settings → Environments → dev`)
 
-## Deploy sequence
+| Secret | Managed by | Notes |
+|---|---|---|
+| `AZURE_CLIENT_ID` | Data platform team | Application (client) ID of `sp-tfl-pipeline` — updated automatically after each infra rebuild |
+| `DATABRICKS_HOST` | Data platform team | Workspace URL — updated automatically after each infra rebuild |
+| `AZURE_TENANT_ID` | Data platform team | Static — does not change between rebuilds |
 
-### First-time setup
+### Deploying
 
-```powershell
-# 1. After terraform apply in simple-databricks-deployment, sync the workspace URL:
-.\scripts\sync-workspace.ps1   # in simple-databricks-deployment
+Pushes to `master` that touch `src/`, `resources/`, `databricks.yml`, or the workflow file trigger an automated deploy. No local deploy tooling — all deployments go through `.github/workflows/deploy.yml`.
 
-# 2. Authenticate the CLI:
-databricks auth login
+### After a workspace rebuild
 
-# 3. Validate and deploy all bundle assets:
-databricks bundle validate
-databricks bundle deploy
+The platform team updates `AZURE_CLIENT_ID` and `DATABRICKS_HOST`. The data engineering team then re-runs the last deploy workflow from the GitHub Actions UI (or merges any pending change to trigger a fresh run). No YAML edits required.
 
-# 4. Apply ABAC masking policies (one-off, re-run after policy changes):
+### First deploy on a new workspace
+
+```bash
+# 1. Confirm platform team has updated AZURE_CLIENT_ID and DATABRICKS_HOST secrets
+# 2. Push to master (or re-run last workflow) to deploy bundle assets
+# 3. Apply ABAC masking policies (one-off, re-run after policy changes):
 databricks bundle run governance-setup
 ```
 
-The `tfl-pipeline` job runs automatically on its 15-minute schedule from that point: bronze ingestion, silver pipeline, gold pipeline, and monitor creation all happen without further intervention.
-
-### After workspace rebuild
-
-The same four steps above. No manual edits to any YAML files.
+The `tfl-pipeline` job runs automatically on its 15-minute schedule from that point.
 
 ---
 
 ## Common commands
 
 ```bash
-databricks bundle validate          # check bundle config without deploying
-databricks bundle deploy            # deploy/update all assets
-databricks bundle run tfl-pipeline  # trigger a manual end-to-end run
+databricks bundle validate              # check bundle config without deploying
+databricks bundle run tfl-pipeline      # trigger a manual end-to-end run
 databricks bundle run governance-setup  # re-apply ABAC policies
-databricks bundle destroy           # remove all deployed assets
 ```
+
+> Deployment (`databricks bundle deploy`) is handled exclusively by GitHub Actions on push to `master`.
 
 ---
 
