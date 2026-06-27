@@ -12,7 +12,7 @@ resources:
       schedule:
         quartz_cron_expression: "0 0/15 * * * ?"
         timezone_id: "Europe/London"
-        pause_status: UNPAUSED
+        pause_status: PAUSED
 
       environments:
         - environment_key: default
