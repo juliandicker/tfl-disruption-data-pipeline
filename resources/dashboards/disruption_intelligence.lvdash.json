@@ -1,41 +1,662 @@
 {
-  "pages": [
-    {
-      "displayName": "Disruption Overview",
-      "layout": [],
-      "name": "overview"
-    },
-    {
-      "displayName": "Customer Impact",
-      "layout": [],
-      "name": "customer_impact"
-    }
-  ],
   "datasets": [
     {
-      "displayName": "Disruptions by Line",
       "name": "disruptions_by_line",
-      "query": "SELECT line_name, SUM(affected_customers) AS total_affected_customers, COUNT(*) AS disruption_events FROM gold.tfl.disruption_summary GROUP BY line_name ORDER BY total_affected_customers DESC"
+      "displayName": "Disruptions by Line",
+      "queryLines": [
+        "SELECT line_name, SUM(affected_customers) AS total_affected_customers, COUNT(*) AS disruption_events FROM gold.tfl.disruption_summary GROUP BY line_name ORDER BY total_affected_customers DESC"
+      ]
     },
     {
-      "displayName": "Daily Customer Impact",
       "name": "daily_customer_impact",
-      "query": "SELECT disruption_date, SUM(affected_customers) AS affected_customers, COUNT(DISTINCT line_id) AS lines_disrupted FROM gold.tfl.disruption_summary GROUP BY disruption_date ORDER BY disruption_date"
+      "displayName": "Daily Customer Impact",
+      "queryLines": [
+        "SELECT disruption_date, SUM(affected_customers) AS affected_customers, COUNT(DISTINCT line_id) AS lines_disrupted FROM gold.tfl.disruption_summary GROUP BY disruption_date ORDER BY disruption_date"
+      ]
     },
     {
-      "displayName": "Severity Distribution",
       "name": "severity_distribution",
-      "query": "SELECT status_severity_description, SUM(affected_customers) AS affected_customers FROM gold.tfl.disruption_summary GROUP BY status_severity_description ORDER BY affected_customers DESC"
+      "displayName": "Severity Distribution",
+      "queryLines": [
+        "SELECT status_severity_description, SUM(affected_customers) AS affected_customers FROM gold.tfl.disruption_summary GROUP BY status_severity_description ORDER BY affected_customers DESC"
+      ]
     },
     {
-      "displayName": "Customers To Alert Now",
       "name": "customers_to_alert",
-      "query": "SELECT line_name, line_id, COUNT(DISTINCT customer_id) AS customers_to_alert, disruption_reason FROM gold.tfl.notification_targets GROUP BY line_name, line_id, disruption_reason ORDER BY customers_to_alert DESC"
+      "displayName": "Customers To Alert Now",
+      "queryLines": [
+        "SELECT line_name, line_id, COUNT(DISTINCT customer_id) AS customers_to_alert, disruption_reason FROM gold.tfl.notification_targets GROUP BY line_name, line_id, disruption_reason ORDER BY customers_to_alert DESC"
+      ]
     },
     {
-      "displayName": "Most Affected Stations",
       "name": "affected_stations",
-      "query": "SELECT home_station, COUNT(DISTINCT customer_id) AS affected_customers, COUNT(DISTINCT line_id) AS disrupted_lines FROM gold.tfl.notification_targets GROUP BY home_station ORDER BY affected_customers DESC LIMIT 20"
+      "displayName": "Most Affected Stations",
+      "queryLines": [
+        "SELECT home_station, COUNT(DISTINCT customer_id) AS affected_customers, COUNT(DISTINCT line_id) AS disrupted_lines FROM gold.tfl.notification_targets GROUP BY home_station ORDER BY affected_customers DESC LIMIT 20"
+      ]
+    },
+    {
+      "name": "scorecard_30d",
+      "displayName": "Scorecard (Last 30 Days)",
+      "queryLines": [
+        "SELECT\n",
+        "  COUNT(*) AS total_disruption_events,\n",
+        "  SUM(affected_customers) AS total_affected_customers,\n",
+        "  COUNT(DISTINCT line_id) AS distinct_lines_disrupted\n",
+        "FROM\n",
+        "  gold.tfl.disruption_summary\n",
+        "WHERE\n",
+        "  disruption_date >= CURRENT_DATE() - INTERVAL 30 DAY"
+      ]
+    },
+    {
+      "name": "notification_counter",
+      "displayName": "Customers Requiring Notification",
+      "queryLines": [
+        "SELECT\n",
+        "  COUNT(DISTINCT customer_id) AS customers_to_notify\n",
+        "FROM\n",
+        "  gold.tfl.notification_targets"
+      ]
     }
-  ]
+  ],
+  "pages": [
+    {
+      "name": "overview",
+      "displayName": "Disruption Overview",
+      "layout": [
+        {
+          "widget": {
+            "name": "header_text",
+            "multilineTextboxSpec": {
+              "lines": [
+                "## Network Disruption Summary (Last 30 Days)"
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 12,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "counter_events",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "scorecard_30d",
+                  "fields": [
+                    {
+                      "name": "total_disruption_events",
+                      "expression": "`total_disruption_events`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "frame": {
+                "title": "Total Disruption Events",
+                "showTitle": true
+              },
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "total_disruption_events",
+                  "format": {
+                    "type": "number-plain",
+                    "abbreviation": "compact"
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 1,
+            "width": 4,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "counter_customers",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "scorecard_30d",
+                  "fields": [
+                    {
+                      "name": "total_affected_customers",
+                      "expression": "`total_affected_customers`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "frame": {
+                "title": "Total Affected Customers",
+                "showTitle": true
+              },
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "total_affected_customers",
+                  "format": {
+                    "type": "number-plain",
+                    "abbreviation": "compact"
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 4,
+            "y": 1,
+            "width": 4,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "counter_lines",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "scorecard_30d",
+                  "fields": [
+                    {
+                      "name": "distinct_lines_disrupted",
+                      "expression": "`distinct_lines_disrupted`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "frame": {
+                "title": "Distinct Lines Disrupted",
+                "showTitle": true
+              },
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "distinct_lines_disrupted"
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 8,
+            "y": 1,
+            "width": 4,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "disruptions_by_line_bar",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "disruptions_by_line",
+                  "fields": [
+                    {
+                      "name": "line_name",
+                      "expression": "`line_name`"
+                    },
+                    {
+                      "name": "sum(disruption_events)",
+                      "expression": "SUM(`disruption_events`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "frame": {
+                "title": "Disruptions by Tube Line",
+                "showTitle": true
+              },
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "line_name",
+                  "scale": {
+                    "type": "categorical",
+                    "sort": {
+                      "by": "y-reversed"
+                    }
+                  }
+                },
+                "y": {
+                  "fieldName": "sum(disruption_events)",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "color": {
+                  "fieldName": "line_name",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 4,
+            "width": 12,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "daily_trend_combo",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "daily_customer_impact",
+                  "fields": [
+                    {
+                      "name": "disruption_date",
+                      "expression": "`disruption_date`"
+                    },
+                    {
+                      "name": "sum(affected_customers)",
+                      "expression": "SUM(`affected_customers`)"
+                    },
+                    {
+                      "name": "sum(lines_disrupted)",
+                      "expression": "SUM(`lines_disrupted`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 1,
+              "frame": {
+                "title": "Daily Affected Customers & Lines Disrupted",
+                "showTitle": true
+              },
+              "widgetType": "combo",
+              "encodings": {
+                "x": {
+                  "fieldName": "disruption_date",
+                  "scale": {
+                    "type": "temporal"
+                  }
+                },
+                "y": {
+                  "primary": {
+                    "fields": [
+                      {
+                        "fieldName": "sum(affected_customers)",
+                        "displayName": "Affected Customers"
+                      }
+                    ],
+                    "scale": {
+                      "type": "quantitative"
+                    },
+                    "axis": {
+                      "title": "Affected Customers"
+                    }
+                  },
+                  "secondary": {
+                    "fields": [
+                      {
+                        "fieldName": "sum(lines_disrupted)",
+                        "displayName": "Lines Disrupted"
+                      }
+                    ],
+                    "scale": {
+                      "type": "quantitative"
+                    },
+                    "axis": {
+                      "title": "Lines Disrupted"
+                    }
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 10,
+            "width": 12,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "severity_breakdown",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "severity_distribution",
+                  "fields": [
+                    {
+                      "name": "status_severity_description",
+                      "expression": "`status_severity_description`"
+                    },
+                    {
+                      "name": "sum(affected_customers)",
+                      "expression": "SUM(`affected_customers`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "frame": {
+                "title": "Severity by Customer Impact",
+                "showTitle": true
+              },
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "status_severity_description",
+                  "scale": {
+                    "type": "categorical",
+                    "sort": {
+                      "by": "y-reversed"
+                    }
+                  }
+                },
+                "y": {
+                  "fieldName": "sum(affected_customers)",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "color": {
+                  "fieldName": "status_severity_description",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 16,
+            "width": 12,
+            "height": 6
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_CANVAS",
+      "layoutVersion": "GRID_V1"
+    },
+    {
+      "name": "customer_impact",
+      "displayName": "Customer Impact",
+      "layout": [
+        {
+          "widget": {
+            "name": "urgency_header",
+            "multilineTextboxSpec": {
+              "lines": [
+                "## Active Disruption Alerts — Customers Requiring Immediate Notification"
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 12,
+            "height": 1
+          }
+        },
+        {
+          "widget": {
+            "name": "counter_notify",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "notification_counter",
+                  "fields": [
+                    {
+                      "name": "customers_to_notify",
+                      "expression": "`customers_to_notify`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "frame": {
+                "title": "Customers to Notify",
+                "showTitle": true,
+                "contentAlignment": "center"
+              },
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "customers_to_notify",
+                  "format": {
+                    "type": "number-plain",
+                    "abbreviation": "none"
+                  },
+                  "style": {
+                    "bold": true,
+                    "color": "#E94B3C"
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 1,
+            "width": 12,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "lines_alert_table",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "customers_to_alert",
+                  "fields": [
+                    {
+                      "name": "line_name",
+                      "expression": "`line_name`"
+                    },
+                    {
+                      "name": "disruption_reason",
+                      "expression": "`disruption_reason`"
+                    },
+                    {
+                      "name": "customers_to_alert",
+                      "expression": "`customers_to_alert`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "frame": {
+                "title": "Lines with Active Alerts",
+                "showTitle": true
+              },
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "line_name",
+                    "displayName": "Tube Line"
+                  },
+                  {
+                    "fieldName": "disruption_reason",
+                    "displayName": "Disruption Reason"
+                  },
+                  {
+                    "fieldName": "customers_to_alert",
+                    "displayName": "Customers to Alert"
+                  }
+                ]
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 4,
+            "width": 12,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "stations_bar",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "affected_stations",
+                  "fields": [
+                    {
+                      "name": "home_station",
+                      "expression": "`home_station`"
+                    },
+                    {
+                      "name": "affected_customers",
+                      "expression": "`affected_customers`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "frame": {
+                "title": "Top 20 Affected Stations",
+                "showTitle": true
+              },
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "home_station",
+                  "scale": {
+                    "type": "categorical",
+                    "sort": {
+                      "by": "y-reversed"
+                    }
+                  }
+                },
+                "y": {
+                  "fieldName": "affected_customers",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "color": {
+                  "fieldName": "home_station",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 10,
+            "width": 12,
+            "height": 6
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_CANVAS",
+      "layoutVersion": "GRID_V1"
+    }
+  ],
+  "uiSettings": {
+    "theme": {
+      "visualizationColors": [
+        "#FF6F61",
+        "#6B5B95",
+        "#88B04B",
+        "#F7CAC9",
+        "#92A8D1",
+        "#FFB347",
+        "#45B8AC",
+        "#E94B3C",
+        "#D65076",
+        "#5B5EA6",
+        "#9B2335",
+        "#DFCFBE",
+        "#55B4B0",
+        "#E15D44",
+        "#7FCDCD",
+        "#BC243C",
+        "#C3447A",
+        "#98B4D4",
+        "#F0C05A",
+        "#4B878B"
+      ],
+      "widgetHeaderAlignment": "ALIGNMENT_UNSPECIFIED"
+    },
+    "applyModeEnabled": false
+  }
 }
