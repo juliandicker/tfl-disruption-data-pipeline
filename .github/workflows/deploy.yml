@@ -46,3 +46,26 @@ jobs:
         run: databricks bundle deploy --force --var "pipeline_sp_application_id=${{ secrets.AZURE_CLIENT_ID }}"
         env:
           DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+
+      - name: Bootstrap class.* tags on PII columns
+        env:
+          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+        run: |
+          # Assign class.* governed tags to known PII columns.
+          # Requires ASSIGN on the governed tag policy — held by account admins
+          # and any principal explicitly granted ASSIGN.
+          # "already exists" on re-deploys is expected (|| true).
+          # Fails gracefully if tables don't exist yet (first deploy).
+          databricks entity-tag-assignments create \
+            "silver.tfl.customer_journeys.full_name" "class.name" "columns" || true
+          databricks entity-tag-assignments create \
+            "silver.tfl.customer_journeys.email" "class.email_address" "columns" || true
+          databricks entity-tag-assignments create \
+            "silver.tfl.customer_journeys.date_of_birth" "class.date_of_birth" "columns" || true
+          databricks entity-tag-assignments create \
+            "silver.tfl.customer_journeys.home_postcode" "class.location" "columns" || true
+          databricks entity-tag-assignments create \
+            "gold.tfl.notification_targets.full_name" "class.name" "columns" || true
+          databricks entity-tag-assignments create \
+            "gold.tfl.notification_targets.email" "class.email_address" "columns" || true
+          echo "class.* tag bootstrapping complete"
