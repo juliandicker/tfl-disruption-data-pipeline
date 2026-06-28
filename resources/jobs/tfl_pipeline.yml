@@ -9,6 +9,16 @@ resources:
 
       max_concurrent_runs: 1
 
+      parameters:
+        - name: bronze_catalog
+          default: "${var.bronze_catalog}"
+        - name: silver_catalog
+          default: "${var.silver_catalog}"
+        - name: gold_catalog
+          default: "${var.gold_catalog}"
+        - name: schema
+          default: "${var.schema}"
+
       schedule:
         quartz_cron_expression: "0 0/15 * * * ?"
         timezone_id: "Europe/London"
@@ -31,9 +41,9 @@ resources:
             python_file: ${workspace.file_path}/src/bronze/ingest_tfl.py
             parameters:
               - "--catalog"
-              - "${var.bronze_catalog}"
+              - "{{job.parameters.bronze_catalog}}"
               - "--schema"
-              - "${var.schema}"
+              - "{{job.parameters.schema}}"
 
         - task_key: generate_profiles
           description: "Generates synthetic customer profiles using Faker and writes them to bronze."
@@ -42,9 +52,9 @@ resources:
             python_file: ${workspace.file_path}/src/bronze/generate_profiles.py
             parameters:
               - "--catalog"
-              - "${var.bronze_catalog}"
+              - "{{job.parameters.bronze_catalog}}"
               - "--schema"
-              - "${var.schema}"
+              - "{{job.parameters.schema}}"
 
         - task_key: run_silver_pipeline
           description: "Runs the silver Declarative Pipeline after both bronze tasks complete."
@@ -70,8 +80,8 @@ resources:
             python_file: ${workspace.file_path}/src/observability/setup_monitors.py
             parameters:
               - "--silver-catalog"
-              - "${var.silver_catalog}"
+              - "{{job.parameters.silver_catalog}}"
               - "--gold-catalog"
-              - "${var.gold_catalog}"
+              - "{{job.parameters.gold_catalog}}"
               - "--schema"
-              - "${var.schema}"
+              - "{{job.parameters.schema}}"
