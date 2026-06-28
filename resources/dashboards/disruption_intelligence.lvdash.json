@@ -1,0 +1,41 @@
+{
+  "pages": [
+    {
+      "displayName": "Disruption Overview",
+      "layout": [],
+      "name": "overview"
+    },
+    {
+      "displayName": "Customer Impact",
+      "layout": [],
+      "name": "customer_impact"
+    }
+  ],
+  "datasets": [
+    {
+      "displayName": "Disruptions by Line",
+      "name": "disruptions_by_line",
+      "query": "SELECT line_name, SUM(affected_customers) AS total_affected_customers, COUNT(*) AS disruption_events FROM gold.tfl.disruption_summary GROUP BY line_name ORDER BY total_affected_customers DESC"
+    },
+    {
+      "displayName": "Daily Customer Impact",
+      "name": "daily_customer_impact",
+      "query": "SELECT disruption_date, SUM(affected_customers) AS affected_customers, COUNT(DISTINCT line_id) AS lines_disrupted FROM gold.tfl.disruption_summary GROUP BY disruption_date ORDER BY disruption_date"
+    },
+    {
+      "displayName": "Severity Distribution",
+      "name": "severity_distribution",
+      "query": "SELECT status_severity_description, SUM(affected_customers) AS affected_customers FROM gold.tfl.disruption_summary GROUP BY status_severity_description ORDER BY affected_customers DESC"
+    },
+    {
+      "displayName": "Customers To Alert Now",
+      "name": "customers_to_alert",
+      "query": "SELECT line_name, line_id, COUNT(DISTINCT customer_id) AS customers_to_alert, disruption_reason FROM gold.tfl.notification_targets GROUP BY line_name, line_id, disruption_reason ORDER BY customers_to_alert DESC"
+    },
+    {
+      "displayName": "Most Affected Stations",
+      "name": "affected_stations",
+      "query": "SELECT home_station, COUNT(DISTINCT customer_id) AS affected_customers, COUNT(DISTINCT line_id) AS disrupted_lines FROM gold.tfl.notification_targets GROUP BY home_station ORDER BY affected_customers DESC LIMIT 20"
+    }
+  ]
+}
