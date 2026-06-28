@@ -11,7 +11,7 @@ resources:
         schema: ${var.schema}
       libraries:
         - file:
-            path: /Workspace${workspace.file_path}/src/pipeline/silver.py
+            path: ${workspace.file_path}/src/pipeline/silver.py
       continuous: false
       development: false
 

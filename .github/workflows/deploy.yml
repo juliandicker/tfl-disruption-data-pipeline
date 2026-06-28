@@ -43,6 +43,6 @@ jobs:
             --query accessToken -o tsv)" >> $GITHUB_ENV
 
       - name: Deploy bundle
-        run: databricks bundle deploy --var "pipeline_sp_application_id=${{ secrets.AZURE_CLIENT_ID }}"
+        run: databricks bundle deploy --force --var "pipeline_sp_application_id=${{ secrets.AZURE_CLIENT_ID }}"
         env:
           DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
