@@ -17,6 +17,8 @@ What this does:
 Prerequisites:
   - Entra groups must exist in Azure (out-of-band).
   - Pipeline must have run at least once so the tables exist.
+  - The admin catalog (default: admin.shared) must exist and the SP must have
+    ALL PRIVILEGES on it — provisioned by the infra Terraform repo.
   - The job's SP must have MANAGE on silver/gold catalogs and ASSIGN on the
     class.name, class.email_address, class.date_of_birth, and class.location
     system governed tags. Grant this once in:
@@ -36,11 +38,15 @@ _parser = argparse.ArgumentParser()
 _parser.add_argument("--silver-catalog", default="silver")
 _parser.add_argument("--gold-catalog", default="gold")
 _parser.add_argument("--schema", default="tfl")
+_parser.add_argument("--admin-catalog", default="admin")
+_parser.add_argument("--admin-schema", default="shared")
 _args, _ = _parser.parse_known_args()
 
 silver = _args.silver_catalog
 gold = _args.gold_catalog
 schema = _args.schema
+admin = _args.admin_catalog
+admin_schema = _args.admin_schema
 
 _PII_READERS = "sg-dbplat-pii-readers"
 _DATA_STEWARDS = "sg-dbplat-data-stewards"
@@ -59,43 +65,44 @@ def try_sql(statement: str, label: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# 1. Type-specific masking UDFs
+# 1. Type-specific masking UDFs — defined once in the shared admin catalog.
 #    Pure transformations only — no identity checks. Principal targeting is
 #    handled by the EXCEPT clause in each ABAC policy (step 4).
+#    Policies on silver/gold reference these by their 3-part name so adding
+#    a new data catalog requires no UDF duplication.
 # ---------------------------------------------------------------------------
 
-for catalog in (silver, gold):
-    # full_name → opaque placeholder
-    sql(f"""
-        CREATE OR REPLACE FUNCTION {catalog}.{schema}.mask_name(val STRING)
-        RETURNS STRING
-        RETURN '***MASKED***'
-    """)
+# full_name → opaque placeholder
+sql(f"""
+    CREATE OR REPLACE FUNCTION {admin}.{admin_schema}.mask_name(val STRING)
+    RETURNS STRING
+    RETURN '***MASKED***'
+""")
 
-    # email → structure preserved, every non-delimiter character replaced
-    # e.g. john.doe@example.com → ****.***@*******.***
-    sql(f"""
-        CREATE OR REPLACE FUNCTION {catalog}.{schema}.mask_email(val STRING)
-        RETURNS STRING
-        RETURN REGEXP_REPLACE(val, '[^@.]', '*')
-    """)
+# email → structure preserved, every non-delimiter character replaced
+# e.g. john.doe@example.com → ****.***@*******.***
+sql(f"""
+    CREATE OR REPLACE FUNCTION {admin}.{admin_schema}.mask_email(val STRING)
+    RETURNS STRING
+    RETURN REGEXP_REPLACE(val, '[^@.]', '*')
+""")
 
-    # date_of_birth → generalise to year (Jan 1 of birth year)
-    # Returns DATE so the type matches the column — e.g. 1990-07-15 → 1990-01-01
-    sql(f"""
-        CREATE OR REPLACE FUNCTION {catalog}.{schema}.mask_dob(val DATE)
-        RETURNS DATE
-        RETURN MAKE_DATE(YEAR(val), 1, 1)
-    """)
+# date_of_birth → generalise to year (Jan 1 of birth year)
+# Returns DATE so the type matches the column — e.g. 1990-07-15 → 1990-01-01
+sql(f"""
+    CREATE OR REPLACE FUNCTION {admin}.{admin_schema}.mask_dob(val DATE)
+    RETURNS DATE
+    RETURN MAKE_DATE(YEAR(val), 1, 1)
+""")
 
-    # home_postcode → outward code only (UK inward code is always 3 chars,
-    # so strip spaces then drop the last 3 — works with or without a space)
-    # e.g. "SO17 1BJ" → "SO17", "SO171BJ" → "SO17"
-    sql(f"""
-        CREATE OR REPLACE FUNCTION {catalog}.{schema}.mask_location(val STRING)
-        RETURNS STRING
-        RETURN LEFT(REPLACE(TRIM(val), ' ', ''), LENGTH(REPLACE(TRIM(val), ' ', '')) - 3)
-    """)
+# home_postcode → outward code only (UK inward code is always 3 chars,
+# so strip spaces then drop the last 3 — works with or without a space)
+# e.g. "SO17 1BJ" → "SO17", "SO171BJ" → "SO17"
+sql(f"""
+    CREATE OR REPLACE FUNCTION {admin}.{admin_schema}.mask_location(val STRING)
+    RETURNS STRING
+    RETURN LEFT(REPLACE(TRIM(val), ' ', ''), LENGTH(REPLACE(TRIM(val), ' ', '')) - 3)
+""")
 
 # ---------------------------------------------------------------------------
 # 2. Bootstrap class.* system tags on known PII columns
@@ -157,7 +164,7 @@ for catalog in (silver, gold):
         sql(f"""
             CREATE OR REPLACE POLICY {policy_name}
             ON CATALOG {catalog}
-            COLUMN MASK {catalog}.{schema}.{fn_name}
+            COLUMN MASK {admin}.{admin_schema}.{fn_name}
             TO `account users` EXCEPT `{_PII_READERS}`, `{_DATA_STEWARDS}`
             FOR TABLES
             MATCH COLUMNS has_tag('{tag_key}') AS {alias}

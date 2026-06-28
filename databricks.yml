@@ -23,6 +23,14 @@ variables:
     description: Schema name used within every catalog layer.
     default: "tfl"
 
+  admin_catalog:
+    description: Unity Catalog name for shared governance infrastructure (masking UDFs).
+    default: "admin"
+
+  admin_schema:
+    description: Schema within the admin catalog that holds shared masking UDFs.
+    default: "shared"
+
   warehouse_id:
     description: >
       SQL warehouse used to run dashboard queries.
