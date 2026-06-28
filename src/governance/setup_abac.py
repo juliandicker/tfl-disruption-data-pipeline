@@ -88,12 +88,13 @@ for catalog in (silver, gold):
         RETURN MAKE_DATE(YEAR(val), 1, 1)
     """)
 
-    # home_postcode → outward code only (district prefix before the space)
-    # e.g. SO17 1BJ → SO17
+    # home_postcode → outward code only (UK inward code is always 3 chars,
+    # so strip spaces then drop the last 3 — works with or without a space)
+    # e.g. "SO17 1BJ" → "SO17", "SO171BJ" → "SO17"
     sql(f"""
         CREATE OR REPLACE FUNCTION {catalog}.{schema}.mask_location(val STRING)
         RETURNS STRING
-        RETURN SPLIT(val, ' ')[0]
+        RETURN LEFT(REPLACE(TRIM(val), ' ', ''), LENGTH(REPLACE(TRIM(val), ' ', '')) - 3)
     """)
 
 # ---------------------------------------------------------------------------
