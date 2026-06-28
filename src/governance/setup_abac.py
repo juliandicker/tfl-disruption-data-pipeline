@@ -77,31 +77,7 @@ for col in GOLD_NOTIFICATION_PII_COLS:
     """)
 
 # ---------------------------------------------------------------------------
-# 3. Schema grants for reader groups
-#    USE_CATALOG is a catalog-level privilege granted by Terraform (infra repo).
-#    The pipeline SP owns the schema, so it can grant schema-level privileges.
-#    Bronze intentionally receives zero group grants.
-# ---------------------------------------------------------------------------
-
-for catalog in (silver_catalog, gold_catalog):
-    sql(f"""
-        GRANT USE_SCHEMA, SELECT
-        ON SCHEMA {catalog}.{schema}
-        TO `sg-dbplat-standard-readers`
-    """)
-    sql(f"""
-        GRANT USE_SCHEMA, SELECT
-        ON SCHEMA {catalog}.{schema}
-        TO `sg-dbplat-pii-readers`
-    """)
-    sql(f"""
-        GRANT USE_SCHEMA, SELECT, MODIFY
-        ON SCHEMA {catalog}.{schema}
-        TO `sg-dbplat-data-stewards`
-    """)
-
-# ---------------------------------------------------------------------------
-# 4. Verify bronze has no group grants (negative assertion)
+# 3. Verify bronze has no group grants (negative assertion)
 # ---------------------------------------------------------------------------
 
 bronze_grants = spark.sql(
