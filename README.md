@@ -66,9 +66,9 @@ Two separate pipelines handle the transform layer. Declarative Pipelines (former
 
 ## Governance
 
-**Data classification**: Run Databricks agentic Data Classification on `silver` and `gold` after the pipeline populates the tables. The classifier will tag `full_name`, `email`, `date_of_birth`, and `home_postcode` automatically. Do not hand-tag these columns.
+**Data classification**: Enable Databricks agentic Data Classification on `silver` and `gold` after the pipeline first populates the tables (Catalog Explorer → catalog → Details → Data Classification → Enable). The engine applies `class.*` system governed tags to PII columns automatically within ~24 h. Do not hand-tag columns manually.
 
-**Entra groups** (pre-created in Azure via `simple-databricks-deployment`):
+**Entra groups** (provisioned by `simple-databricks-deployment`):
 
 | Group | Access |
 |---|---|
@@ -76,7 +76,18 @@ Two separate pipelines handle the transform layer. Declarative Pipelines (former
 | `sg-dbplat-pii-readers` | Silver and gold — PII columns unmasked (ABAC `EXCEPT` group) |
 | `sg-dbplat-data-stewards` | Full visibility, manages governed tags and ABAC policies |
 
-**ABAC column masking**: `src/governance/setup_abac.py` creates a `pii_mask` function in both catalogs that returns the raw value for `sg-dbplat-pii-readers` and `sg-dbplat-data-stewards`, and `'***MASKED***'` for everyone else. Applied to `full_name`, `email`, and `home_postcode` in `customer_journeys`, and `full_name` and `email` in `notification_targets`.
+**ABAC column masking**: `src/governance/setup_abac.py` creates four catalog-level ABAC policies per catalog, keyed off `class.*` system governed tags from Data Classification. Each policy uses a type-specific masking UDF:
+
+| Column | `class.*` tag | Masked value (standard readers) |
+|---|---|---|
+| `full_name` | `class.name` | `***MASKED***` |
+| `email` | `class.email_address` | `****@*******.***` (structure preserved) |
+| `date_of_birth` | `class.date_of_birth` | Year only — e.g. `1990-01-01` |
+| `home_postcode` | `class.location` | Outward code only — e.g. `SO17` |
+
+`sg-dbplat-pii-readers` and `sg-dbplat-data-stewards` are exempt from all masking via the policy `EXCEPT` clause.
+
+The governance-setup job also bootstraps the `class.*` tags directly onto known PII columns at run time, so masking is active immediately without waiting for the Data Classification scan. This requires a **one-time admin step**: grant the pipeline SP `ASSIGN` on `class.name`, `class.email_address`, `class.date_of_birth`, and `class.location` in Catalog Explorer → Govern → Governed Tags → each tag → Permissions.
 
 ---
 
@@ -111,7 +122,11 @@ The platform team updates `AZURE_CLIENT_ID` and `DATABRICKS_HOST`. The data engi
 ```bash
 # 1. Confirm platform team has updated AZURE_CLIENT_ID and DATABRICKS_HOST secrets
 # 2. Push to master (or re-run last workflow) to deploy bundle assets
-# 3. Apply ABAC masking policies (one-off, re-run after policy changes):
+# 3. Grant pipeline SP ASSIGN on class.name, class.email_address, class.date_of_birth,
+#    class.location in Catalog Explorer → Govern → Governed Tags (one-time admin step)
+# 4. Enable Data Classification on silver and gold catalogs
+#    (Catalog Explorer → catalog → Details → Data Classification → Enable)
+# 5. Apply ABAC masking policies (one-off, re-run after policy changes):
 databricks bundle run governance-setup
 ```
 

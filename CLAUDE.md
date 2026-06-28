@@ -49,9 +49,9 @@ Use Declarative Pipelines (formerly DLT) for transforms: automatic orchestration
 
 | Table | Contents | PII |
 |---|---|---|
-| `silver.default.customer_journeys` | Cleaned, deduped, `customer_profiles` joined to arrivals/disruption on `home_station` | Yes — `full_name`, `email`, `home_postcode` |
-| `gold.default.disruption_summary` | Aggregated, no PII | No |
-| `gold.default.notification_targets` | Actionable alert output | Yes — contains `email` (aggregation ≠ anonymisation) |
+| `silver.tfl.customer_journeys` | Cleaned, deduped, `customer_profiles` joined to arrivals/disruption on `home_station` | Yes — `full_name`, `email`, `date_of_birth`, `home_postcode` |
+| `gold.tfl.disruption_summary` | Aggregated, no PII | No |
+| `gold.tfl.notification_targets` | Actionable alert output | Yes — `full_name`, `email` (aggregation ≠ anonymisation) |
 
 Liquid clustering on `customer_journeys`.
 
@@ -61,9 +61,9 @@ Liquid clustering on `customer_journeys`.
 
 ### Governance
 
-**Classification**: run Databricks agentic Data Classification on `silver` and `gold` — don't hand-tag PII columns, let the classifier demonstrate the capability.
+**Classification**: Enable Databricks agentic Data Classification on `silver` and `gold` after the pipeline first populates the tables (Catalog Explorer → catalog → Details → Data Classification → Enable). The engine applies `class.*` system governed tags to PII columns automatically within ~24 h. Do not hand-tag columns — let the classifier demonstrate the capability.
 
-**Entra groups:**
+**Entra groups** (provisioned by `simple-databricks-deployment` via Terraform + `azuread` provider):
 
 | Group | Access |
 |---|---|
@@ -71,9 +71,16 @@ Liquid clustering on `customer_journeys`.
 | `sg-dbplat-pii-readers` | Silver/gold, PII columns unmasked (ABAC `EXCEPT` group) |
 | `sg-dbplat-data-stewards` | Full visibility, manages governed tags and ABAC policies |
 
-**ABAC**: one policy per catalog (`silver`, `gold`) masking columns tagged as PII, for all principals except `sg-dbplat-pii-readers` and `sg-dbplat-data-stewards`.
+**ABAC**: four catalog-level policies per catalog (`silver`, `gold`), one per `class.*` tag type, each with a type-specific masking UDF. Principal exemptions are in the policy `EXCEPT` clause — not embedded in UDF logic.
 
-**Open question — Entra group provisioning**: either (a) `azuread` Terraform provider added to the infra repo, or (b) created out-of-band and referenced by name here. Decide before scaffolding grants.
+| `class.*` tag | Columns | Mask |
+|---|---|---|
+| `class.name` | `full_name` | `***MASKED***` |
+| `class.email_address` | `email` | Character-by-character `*`, preserving `@` and `.` |
+| `class.date_of_birth` | `date_of_birth` | Generalised to year (`1990-01-01`) |
+| `class.location` | `home_postcode` | Outward code only (`SO17`) |
+
+`setup_abac.py` also bootstraps these tags directly onto the known PII columns at job run time so masking is active before the Data Classification scan completes. This requires the pipeline SP to have `ASSIGN` on each `class.*` tag — grant once in Catalog Explorer → Govern → Governed Tags → each tag → Permissions. (`databricks_grants` does not yet support `governed_tag` as a securable type in the Terraform provider.)
 
 ### Observability
 
@@ -101,8 +108,8 @@ The workspace URL and pipeline SP application ID change after each infra rebuild
 
 | | |
 |---|---|
-| SKU | Premium (required for Unity Catalog) |
-| Region | `uksouth` |
+| SKU | Trial (Premium features, 14-day window per workspace — see infra repo) |
+| Region | `northeurope` |
 
 ### Unity Catalog
 
