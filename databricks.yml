@@ -35,6 +35,10 @@ variables:
     description: Schema within the admin catalog that holds shared masking UDFs.
     default: "shared"
 
+  warehouse_id:
+    description: >
+      ID of the SQL warehouse used to run dashboard queries.
+      Provisioned by the infrastructure project; update after each workspace rebuild.
 
 targets:
   dev:
@@ -45,4 +49,3 @@ include:
   - resources/jobs/*.yml
   - resources/pipelines/*.yml
   - resources/dashboards/*.yml
-  - resources/warehouses/*.yml
