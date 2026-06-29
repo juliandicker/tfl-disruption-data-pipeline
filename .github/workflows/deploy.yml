@@ -42,8 +42,20 @@ jobs:
             --resource 2ff814a6-3304-4ab8-85cb-cd0e6f879c1d \
             --query accessToken -o tsv)" >> $GITHUB_ENV
 
+      - name: Resolve warehouse ID
+        run: |
+          WH_ID=$(databricks warehouses list --output json \
+            | jq -r '.[] | select(.name == "travel-sql-warehouse") | .id')
+          if [ -z "$WH_ID" ]; then
+            echo "Error: warehouse 'travel-sql-warehouse' not found — provision it in the infrastructure project first"
+            exit 1
+          fi
+          echo "WAREHOUSE_ID=$WH_ID" >> $GITHUB_ENV
+        env:
+          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+
       - name: Deploy bundle
-        run: databricks bundle deploy --force --var "pipeline_sp_application_id=${{ secrets.AZURE_CLIENT_ID }}"
+        run: databricks bundle deploy --force --var "pipeline_sp_application_id=${{ secrets.AZURE_CLIENT_ID }}" --var "warehouse_id=$WAREHOUSE_ID"
         env:
           DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
 
