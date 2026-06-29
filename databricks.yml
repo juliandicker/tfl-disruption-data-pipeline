@@ -35,11 +35,6 @@ variables:
     description: Schema within the admin catalog that holds shared masking UDFs.
     default: "shared"
 
-  warehouse_id:
-    description: >
-      SQL warehouse used to run dashboard queries.
-      The Serverless Starter Warehouse ID in this workspace.
-    default: "3c3321cc6ba8b492"
 
 targets:
   dev:
@@ -50,3 +45,4 @@ include:
   - resources/jobs/*.yml
   - resources/pipelines/*.yml
   - resources/dashboards/*.yml
+  - resources/warehouses/*.yml

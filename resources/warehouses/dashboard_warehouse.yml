@@ -1,0 +1,8 @@
+resources:
+  warehouses:
+    dashboard_warehouse:
+      name: tfl-dashboard-warehouse
+      cluster_size: "2X-Small"
+      warehouse_type: PRO
+      enable_serverless_compute: true
+      auto_stop_mins: 10

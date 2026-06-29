@@ -2,5 +2,5 @@ resources:
   dashboards:
     disruption_intelligence:
       display_name: TfL Disruption Intelligence
-      warehouse_id: ${var.warehouse_id}
+      warehouse_id: ${resources.warehouses.dashboard_warehouse.id}
       file_path: ../../resources/dashboards/disruption_intelligence.lvdash.json
