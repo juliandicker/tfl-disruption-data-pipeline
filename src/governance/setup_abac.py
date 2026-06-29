@@ -6,26 +6,22 @@ Idempotent: CREATE OR REPLACE for functions/policies; SET TAGS is idempotent; DR
 MASK is wrapped in try/except for first-run safety.
 
 What this does:
-  1. Creates 4 type-specific masking UDFs in silver and gold catalogs.
-  2. Bootstraps class.* system tags on known PII columns so that masking is
-     active immediately, before Data Classification's async scan completes.
-  3. Drops any old table-level column masks from the prior RBAC approach.
-  4. Creates 4 catalog-level ABAC policies per catalog (one per class.* tag type),
+  1. Creates 4 type-specific masking UDFs in the shared admin catalog.
+  2. Drops any old table-level column masks from the prior RBAC approach.
+  3. Creates 4 catalog-level ABAC policies per catalog (one per class.* tag type),
      exempting sg-dbplat-pii-readers and sg-dbplat-data-stewards.
-  5. Verifies bronze has no group grants.
+  4. Verifies bronze has no group grants.
+
+class.* tags are applied by the Data Classification engine (~24 h after being
+enabled on the catalog by the infra CI step). Masking activates automatically
+once the scanner assigns the tags.
 
 Prerequisites:
   - Entra groups must exist in Azure (out-of-band).
   - Pipeline must have run at least once so the tables exist.
   - The admin catalog (default: admin.shared) must exist and the SP must have
     ALL PRIVILEGES on it — provisioned by the infra Terraform repo.
-  - The job's SP must have MANAGE on silver/gold catalogs and ASSIGN on the
-    class.name, class.email_address, class.date_of_birth, and class.location
-    system governed tags. Grant this once in:
-    Catalog Explorer → Govern → Governed Tags → <tag> → Permissions.
-  - Enable Data Classification on silver and gold catalogs separately via:
-    Catalog Explorer → <catalog> → Details → Data Classification → Enable.
-    The engine will scan and reinforce class.* tags within ~24 h.
+  - The job's SP must have MANAGE on silver/gold catalogs.
 """
 
 import argparse
@@ -103,28 +99,6 @@ sql(f"""
     RETURNS STRING
     RETURN LEFT(REPLACE(TRIM(val), ' ', ''), LENGTH(REPLACE(TRIM(val), ' ', '')) - 3)
 """)
-
-# ---------------------------------------------------------------------------
-# 2. Bootstrap class.* system tags on known PII columns
-#    Ensures masking is effective immediately. Data Classification will
-#    reinforce these tags automatically once enabled on the catalog.
-#    Requires SP to have ASSIGN on each class.* tag (admin grants once).
-# ---------------------------------------------------------------------------
-
-_COLUMN_TAGS = [
-    (f"{silver}.{schema}.customer_journeys",    "full_name",     "class.name"),
-    (f"{silver}.{schema}.customer_journeys",    "email",         "class.email_address"),
-    (f"{silver}.{schema}.customer_journeys",    "date_of_birth", "class.date_of_birth"),
-    (f"{silver}.{schema}.customer_journeys",    "home_postcode", "class.location"),
-    (f"{gold}.{schema}.notification_targets",   "full_name",     "class.name"),
-    (f"{gold}.{schema}.notification_targets",   "email",         "class.email_address"),
-]
-
-for table, column, tag_key in _COLUMN_TAGS:
-    try_sql(
-        f"ALTER TABLE {table} ALTER COLUMN {column} SET TAGS ('{tag_key}' = 'detected')",
-        f"SET TAGS {tag_key} on {table}.{column}",
-    )
 
 # ---------------------------------------------------------------------------
 # 3. Remove old table-level column masks (prior RBAC approach)
