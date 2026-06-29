@@ -33,3 +33,5 @@ resources:
               - "${var.admin_catalog}"
               - "--admin-schema"
               - "${var.admin_schema}"
+              - "--pipeline-sp"
+              - "${var.pipeline_sp_application_id}"

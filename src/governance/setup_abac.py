@@ -22,6 +22,9 @@ Prerequisites:
   - The admin catalog (default: admin.shared) must exist and the SP must have
     ALL PRIVILEGES on it — provisioned by the infra Terraform repo.
   - The job's SP must have MANAGE on silver/gold catalogs.
+  - Pass --pipeline-sp <application_id> so the SP is exempted from masking
+    policies. Without this, DLT fails with ABAC_POLICIES_NOT_SUPPORTED when
+    writing to the silver streaming table.
 """
 
 import argparse
@@ -36,6 +39,7 @@ _parser.add_argument("--gold-catalog", default="gold")
 _parser.add_argument("--schema", default="tfl")
 _parser.add_argument("--admin-catalog", default="admin")
 _parser.add_argument("--admin-schema", default="shared")
+_parser.add_argument("--pipeline-sp", default="", help="Application ID of the pipeline SP — exempted from all masking policies so DLT can write to silver/gold without ABAC blocking it")
 _args, _ = _parser.parse_known_args()
 
 silver = _args.silver_catalog
@@ -43,6 +47,7 @@ gold = _args.gold_catalog
 schema = _args.schema
 admin = _args.admin_catalog
 admin_schema = _args.admin_schema
+pipeline_sp = _args.pipeline_sp
 
 _PII_READERS = "sg-dbplat-pii-readers"
 _DATA_STEWARDS = "sg-dbplat-data-stewards"
@@ -133,13 +138,15 @@ _POLICIES = [
     ("mask_location_columns", "mask_location", "class.location",      "loc_col"),
 ]
 
+_sp_except = f", `{pipeline_sp}`" if pipeline_sp else ""
+
 for catalog in (silver, gold):
     for policy_name, fn_name, tag_key, alias in _POLICIES:
         sql(f"""
             CREATE OR REPLACE POLICY {policy_name}
             ON CATALOG {catalog}
             COLUMN MASK {admin}.{admin_schema}.{fn_name}
-            TO `account users` EXCEPT `{_PII_READERS}`, `{_DATA_STEWARDS}`
+            TO `account users` EXCEPT `{_PII_READERS}`, `{_DATA_STEWARDS}`{_sp_except}
             FOR TABLES
             MATCH COLUMNS has_tag('{tag_key}') AS {alias}
             ON COLUMN {alias}
