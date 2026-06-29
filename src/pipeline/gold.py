@@ -77,6 +77,7 @@ dlt.create_streaming_table(
         "Contains email — aggregation does not equal anonymisation. "
         "ABAC masking policy applies to full_name and email for standard-readers."
     ),
+    table_properties={"delta.enableChangeDataFeed": "true"},
 )
 
 dlt.apply_changes(
