@@ -69,6 +69,7 @@ dlt.create_streaming_table(
         "Liquid-clustered on home_station and customer_id."
     ),
     cluster_by=["home_station", "customer_id"],
+    table_properties={"delta.enableChangeDataFeed": "true"},
 )
 
 dlt.apply_changes(
