@@ -1,5 +1,5 @@
 resources:
-  warehouses:
+  sql_warehouses:
     dashboard_warehouse:
       name: travel-sql-warehouse
       cluster_size: "2X-Small"
