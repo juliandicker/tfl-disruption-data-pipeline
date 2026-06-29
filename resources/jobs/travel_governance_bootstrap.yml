@@ -1,0 +1,24 @@
+resources:
+  jobs:
+    travel_governance_bootstrap:
+      name: travel-governance-bootstrap
+      description: >
+        One-off bootstrap job. Applies class.* governed tags to known PII columns in
+        silver.tfl and gold.travel so ABAC masking is active immediately, without
+        waiting for the Data Classification scanner (~24h lag).
+
+        Run once after the pipeline has first populated the tables. Do not schedule —
+        the Data Classification engine takes over ongoing tagging after the initial scan.
+
+        Prerequisite: grant the pipeline SP ASSIGN on each class.* governed tag in
+        Catalog Explorer → Govern → Governed Tags → each tag → Permissions.
+
+      run_as:
+        service_principal_name: ${var.pipeline_sp_application_id}
+
+      tasks:
+        - task_key: tag_pii_columns
+          sql_task:
+            warehouse_id: ${var.warehouse_id}
+            file:
+              path: ${workspace.file_path}/governance/tag_pii_columns.sql
