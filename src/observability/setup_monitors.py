@@ -1,6 +1,7 @@
 import argparse
 
 from databricks.sdk import WorkspaceClient
+from pyspark.sql import SparkSession
 from databricks.sdk.errors import NotFound, ResourceDoesNotExist
 
 _parser = argparse.ArgumentParser()
@@ -13,6 +14,7 @@ silver = _args.silver_catalog
 gold = _args.gold_catalog
 schema = _args.schema
 
+spark = SparkSession.builder.getOrCreate()
 w = WorkspaceClient()
 
 MONITORS = [
@@ -34,6 +36,8 @@ SCHEDULE = {"quartz_cron_expression": "0 0 6 * * ?", "timezone_id": "Europe/Lond
 
 for m in MONITORS:
     table = m["table_name"]
+    spark.sql(f"ALTER TABLE {table} SET TBLPROPERTIES ('delta.enableChangeDataFeed' = 'true')")
+    print(f"CDF enabled: {table}")
     try:
         w.api_client.do("GET", f"/api/2.1/unity-catalog/tables/{table}/monitor")
         print(f"Monitor already exists: {table}")
