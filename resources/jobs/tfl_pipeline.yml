@@ -61,6 +61,7 @@ resources:
           depends_on:
             - task_key: ingest_tfl
             - task_key: generate_profiles
+          max_retries: 0
           pipeline_task:
             pipeline_id: ${resources.pipelines.silver_pipeline.id}
 
@@ -68,6 +69,7 @@ resources:
           description: "Runs the gold Declarative Pipeline after silver completes."
           depends_on:
             - task_key: run_silver_pipeline
+          max_retries: 0
           pipeline_task:
             pipeline_id: ${resources.pipelines.gold_pipeline.id}
 
