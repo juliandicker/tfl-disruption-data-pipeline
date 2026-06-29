@@ -7,11 +7,13 @@ _parser = argparse.ArgumentParser()
 _parser.add_argument("--silver-catalog", default="silver")
 _parser.add_argument("--gold-catalog", default="gold")
 _parser.add_argument("--schema", default="tfl")
+_parser.add_argument("--gold-schema", default="travel")
 _args, _ = _parser.parse_known_args()
 
 silver = _args.silver_catalog
 gold = _args.gold_catalog
 schema = _args.schema
+gold_schema = _args.gold_schema
 
 w = WorkspaceClient()
 
@@ -23,9 +25,9 @@ MONITORS = [
         "time_series": {"timestamp_col": "ingested_at", "granularities": ["1 day"]},
     },
     {
-        "table_name": f"{gold}.{schema}.disruption_summary",
+        "table_name": f"{gold}.{gold_schema}.disruption_summary",
         "assets_dir": "/Shared/monitors/disruption_summary",
-        "output_schema_name": f"{gold}.{schema}",
+        "output_schema_name": f"{gold}.{gold_schema}",
         "time_series": {"timestamp_col": "disruption_date", "granularities": ["1 day"]},
     },
 ]

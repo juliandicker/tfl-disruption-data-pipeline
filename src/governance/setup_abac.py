@@ -37,6 +37,7 @@ _parser = argparse.ArgumentParser()
 _parser.add_argument("--silver-catalog", default="silver")
 _parser.add_argument("--gold-catalog", default="gold")
 _parser.add_argument("--schema", default="tfl")
+_parser.add_argument("--gold-schema", default="travel")
 _parser.add_argument("--admin-catalog", default="admin")
 _parser.add_argument("--admin-schema", default="shared")
 _parser.add_argument("--pipeline-sp", default="", help="Application ID of the pipeline SP — exempted from all masking policies so DLT can write to silver/gold without ABAC blocking it")
@@ -45,6 +46,7 @@ _args, _ = _parser.parse_known_args()
 silver = _args.silver_catalog
 gold = _args.gold_catalog
 schema = _args.schema
+gold_schema = _args.gold_schema
 admin = _args.admin_catalog
 admin_schema = _args.admin_schema
 pipeline_sp = _args.pipeline_sp
@@ -115,8 +117,8 @@ _OLD_MASKS = [
     (f"{silver}.{schema}.customer_journeys",  "full_name"),
     (f"{silver}.{schema}.customer_journeys",  "email"),
     (f"{silver}.{schema}.customer_journeys",  "home_postcode"),
-    (f"{gold}.{schema}.notification_targets", "full_name"),
-    (f"{gold}.{schema}.notification_targets", "email"),
+    (f"{gold}.{gold_schema}.notification_targets", "full_name"),
+    (f"{gold}.{gold_schema}.notification_targets", "email"),
 ]
 
 for table, column in _OLD_MASKS:

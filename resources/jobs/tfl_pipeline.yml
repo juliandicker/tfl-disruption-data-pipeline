@@ -18,6 +18,8 @@ resources:
           default: "${var.gold_catalog}"
         - name: schema
           default: "${var.schema}"
+        - name: gold_schema
+          default: "${var.gold_schema}"
 
       schedule:
         quartz_cron_expression: "0 0/15 * * * ?"
@@ -87,3 +89,5 @@ resources:
               - "{{job.parameters.gold_catalog}}"
               - "--schema"
               - "{{job.parameters.schema}}"
+              - "--gold-schema"
+              - "{{job.parameters.gold_schema}}"

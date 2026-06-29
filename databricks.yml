@@ -20,8 +20,12 @@ variables:
     default: "gold"
 
   schema:
-    description: Schema name used within every catalog layer.
+    description: Schema name used within bronze and silver catalogs.
     default: "tfl"
+
+  gold_schema:
+    description: Schema name used within the gold catalog. Domain-named (travel) rather than source-named (tfl) — gold publishes data products for the travel domain, not a single source.
+    default: "travel"
 
   admin_catalog:
     description: Unity Catalog name for shared governance infrastructure (masking UDFs).

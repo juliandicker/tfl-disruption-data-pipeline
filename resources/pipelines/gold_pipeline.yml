@@ -3,7 +3,7 @@ resources:
     gold_pipeline:
       name: gold-pipeline
       catalog: ${var.gold_catalog}
-      schema: ${var.schema}
+      schema: ${var.gold_schema}
       serverless: true
       channel: CURRENT
       configuration:

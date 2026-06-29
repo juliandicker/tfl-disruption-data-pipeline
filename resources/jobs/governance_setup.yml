@@ -29,6 +29,8 @@ resources:
               - "${var.gold_catalog}"
               - "--schema"
               - "${var.schema}"
+              - "--gold-schema"
+              - "${var.gold_schema}"
               - "--admin-catalog"
               - "${var.admin_catalog}"
               - "--admin-schema"

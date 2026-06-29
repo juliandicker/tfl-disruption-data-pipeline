@@ -4,35 +4,35 @@
       "name": "disruptions_by_line",
       "displayName": "Disruptions by Line",
       "queryLines": [
-        "SELECT line_name, SUM(affected_customers) AS total_affected_customers, COUNT(*) AS disruption_events FROM gold.tfl.disruption_summary GROUP BY line_name ORDER BY total_affected_customers DESC"
+        "SELECT line_name, SUM(affected_customers) AS total_affected_customers, COUNT(*) AS disruption_events FROM gold.travel.disruption_summary GROUP BY line_name ORDER BY total_affected_customers DESC"
       ]
     },
     {
       "name": "daily_customer_impact",
       "displayName": "Daily Customer Impact",
       "queryLines": [
-        "SELECT disruption_date, SUM(affected_customers) AS affected_customers, COUNT(DISTINCT line_id) AS lines_disrupted FROM gold.tfl.disruption_summary GROUP BY disruption_date ORDER BY disruption_date"
+        "SELECT disruption_date, SUM(affected_customers) AS affected_customers, COUNT(DISTINCT line_id) AS lines_disrupted FROM gold.travel.disruption_summary GROUP BY disruption_date ORDER BY disruption_date"
       ]
     },
     {
       "name": "severity_distribution",
       "displayName": "Severity Distribution",
       "queryLines": [
-        "SELECT status_severity_description, SUM(affected_customers) AS affected_customers FROM gold.tfl.disruption_summary GROUP BY status_severity_description ORDER BY affected_customers DESC"
+        "SELECT status_severity_description, SUM(affected_customers) AS affected_customers FROM gold.travel.disruption_summary GROUP BY status_severity_description ORDER BY affected_customers DESC"
       ]
     },
     {
       "name": "customers_to_alert",
       "displayName": "Customers To Alert Now",
       "queryLines": [
-        "SELECT line_name, line_id, COUNT(DISTINCT customer_id) AS customers_to_alert, disruption_reason FROM gold.tfl.notification_targets GROUP BY line_name, line_id, disruption_reason ORDER BY customers_to_alert DESC"
+        "SELECT line_name, line_id, COUNT(DISTINCT customer_id) AS customers_to_alert, disruption_reason FROM gold.travel.notification_targets GROUP BY line_name, line_id, disruption_reason ORDER BY customers_to_alert DESC"
       ]
     },
     {
       "name": "affected_stations",
       "displayName": "Most Affected Stations",
       "queryLines": [
-        "SELECT home_station, COUNT(DISTINCT customer_id) AS affected_customers, COUNT(DISTINCT line_id) AS disrupted_lines FROM gold.tfl.notification_targets GROUP BY home_station ORDER BY affected_customers DESC LIMIT 20"
+        "SELECT home_station, COUNT(DISTINCT customer_id) AS affected_customers, COUNT(DISTINCT line_id) AS disrupted_lines FROM gold.travel.notification_targets GROUP BY home_station ORDER BY affected_customers DESC LIMIT 20"
       ]
     },
     {
@@ -44,7 +44,7 @@
         "  SUM(affected_customers) AS total_affected_customers,\n",
         "  COUNT(DISTINCT line_id) AS distinct_lines_disrupted\n",
         "FROM\n",
-        "  gold.tfl.disruption_summary\n",
+        "  gold.travel.disruption_summary\n",
         "WHERE\n",
         "  disruption_date >= CURRENT_DATE() - INTERVAL 30 DAY"
       ]
@@ -56,7 +56,7 @@
         "SELECT\n",
         "  COUNT(DISTINCT customer_id) AS customers_to_notify\n",
         "FROM\n",
-        "  gold.tfl.notification_targets"
+        "  gold.travel.notification_targets"
       ]
     }
   ],

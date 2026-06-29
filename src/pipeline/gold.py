@@ -2,10 +2,10 @@
 Lakeflow Spark Declarative Pipeline — gold layer
 
 Produces:
-  - gold.tfl.disruption_summary: aggregated counts, no PII. Materialized view
+  - gold.travel.disruption_summary: aggregated counts, no PII. Materialized view
     is correct here — aggregations re-compute naturally on refresh and no UC
     column masks are needed.
-  - gold.tfl.notification_targets: one row per affected customer per disrupted
+  - gold.travel.notification_targets: one row per affected customer per disrupted
     line, ready for alerting. Contains PII (full_name, email). Must be a
     streaming table (Delta-backed) so UC column masks can be applied by the
     governance-setup job.
