@@ -3,12 +3,16 @@ resources:
     travel_governance_bootstrap:
       name: travel-governance-bootstrap
       description: >
-        One-off bootstrap job. Applies class.* governed tags to known PII columns in
-        silver.tfl and gold.travel so ABAC masking is active immediately, without
-        waiting for the Data Classification scanner (~24h lag).
+        One-off bootstrap job. Run once after the pipeline has first populated the tables.
+        Do not schedule.
 
-        Run once after the pipeline has first populated the tables. Do not schedule —
-        the Data Classification engine takes over ongoing tagging after the initial scan.
+        tag_pii_columns: applies class.* governed tags to known PII columns in silver.tfl
+        and gold.travel so ABAC masking is active immediately, without waiting for the
+        Data Classification scanner (~24h lag).
+
+        set_freshness_slas: sets platform.freshness_sla table properties on every managed
+        table so the platform-governance-daily job can compute sla_status in
+        admin.shared.retention_compliance.
 
         Prerequisite: grant the pipeline SP ASSIGN on each class.* governed tag in
         Catalog Explorer → Govern → Governed Tags → each tag → Permissions.
@@ -22,3 +26,9 @@ resources:
             warehouse_id: ${var.warehouse_id}
             file:
               path: ${workspace.file_path}/governance/tag_pii_columns.sql
+
+        - task_key: set_freshness_slas
+          sql_task:
+            warehouse_id: ${var.warehouse_id}
+            file:
+              path: ${workspace.file_path}/governance/set_freshness_slas.sql
