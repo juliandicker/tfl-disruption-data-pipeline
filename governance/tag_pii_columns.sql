@@ -3,6 +3,16 @@
 -- Idempotent: SET TAGS overwrites existing values. Safe to re-run.
 -- Prerequisite: the travel pipeline SP must have ASSIGN on each class.* governed tag
 --   (Catalog Explorer → Govern → Governed Tags → each tag → Permissions).
+--
+-- INTENTIONAL OMISSIONS — do not add these:
+--   silver.tfl.customer_journeys.telephone_number
+--   bronze.tfl.customer_profiles.telephone_number
+--   bronze.tfl.customer_profiles.customer_notes
+--
+-- These columns are left untagged on purpose to demonstrate that the Databricks
+-- agentic Data Classification engine detects and tags them automatically within ~24h,
+-- including PII embedded in unstructured free-text (customer_notes). This showcases
+-- what happens in practice when new PII fields are added without a governance update.
 
 ALTER TABLE silver.tfl.customer_journeys  ALTER COLUMN full_name     SET TAGS ('class.name' = '');
 ALTER TABLE silver.tfl.customer_journeys  ALTER COLUMN email         SET TAGS ('class.email_address' = '');

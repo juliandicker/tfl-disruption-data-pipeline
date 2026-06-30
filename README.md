@@ -13,7 +13,7 @@ Customer profile data in this pipeline is **entirely synthetic**, generated usin
 ```
 TfL Open Data API ──┐
                     ├─► bronze ──► silver (Declarative Pipeline) ──► gold ──► monitors
-Faker generator ────┘
+Faker generator ────┘                                                     └──► dashboard
 ```
 
 All stages are orchestrated by a single `tfl-pipeline` Lakeflow Job that runs on a 15-minute schedule:
@@ -21,7 +21,7 @@ All stages are orchestrated by a single `tfl-pipeline` Lakeflow Job that runs on
 ```
 ingest_tfl ──┐
               ├──► run_silver_pipeline ──► run_gold_pipeline ──► setup_monitors
-generate_profiles ──┘
+generate_profiles ──┘                                        └──► refresh_dashboard
 ```
 
 ### Why two repos, two tools?
@@ -58,9 +58,13 @@ Two separate pipelines handle the transform layer. Declarative Pipelines (former
 - `customer_journeys`: valid email format, `home_station` not null, `date_of_birth` plausible (not in future, not before 1900).
 - `disruption_summary`: `disruption_date` not null, `line_id` matches known TfL line reference list.
 
-### Lakehouse Monitoring
+### Lakehouse Monitoring and dashboard refresh
 
-`setup_monitors` runs as the final task in the pipeline job after gold completes. It creates time-series Lakehouse monitors on `silver.default.customer_journeys` and `gold.default.disruption_summary` using the Databricks SDK — idempotent, no manual steps required on environment rebuild.
+Two tasks run in parallel after `run_gold_pipeline`:
+
+**`setup_monitors`** creates time-series Lakehouse monitors on `silver.default.customer_journeys` and `gold.default.disruption_summary` using the Databricks SDK — idempotent, no manual steps required on environment rebuild.
+
+**`refresh_dashboard`** republishes the *TfL Disruption Intelligence* Lakeview (AI/BI) dashboard using the native Databricks `dashboard_task` type, so the published snapshot reflects the freshest gold data immediately after each pipeline run.
 
 ---
 
@@ -155,5 +159,5 @@ databricks bundle run governance-setup  # re-apply ABAC policies
 | **Forecasting / ML** | Possible future MLOps phase. Not folded into this data engineering focused repo. |
 | **Lakeflow Connect** | Built for SaaS/database ingestion. The source here is a REST API called directly — Connect adds no value. |
 | **Lakeflow Designer** | No-code tool aimed at citizen developers. Using it here would undercut the hands-on engineering depth this project demonstrates. |
-| **Genie / AI-BI dashboard** | Wanted, but the use case is undefined. Revisit once `gold.disruption_summary` has real shape to query against. |
+| **Genie** | Space-based natural language querying — possible future addition once the gold tables have enough history to make freeform exploration useful. |
 | **FinOps / cost dashboards** | A core data platform capability, not a pipeline concern. Belongs in the infrastructure repo alongside system table configuration. |

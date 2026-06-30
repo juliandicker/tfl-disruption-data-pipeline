@@ -91,3 +91,11 @@ resources:
               - "{{job.parameters.schema}}"
               - "--gold-schema"
               - "{{job.parameters.gold_schema}}"
+
+        - task_key: refresh_dashboard
+          description: "Republishes the TfL Disruption Intelligence dashboard after gold tables are updated."
+          depends_on:
+            - task_key: run_gold_pipeline
+          dashboard_task:
+            dashboard_id: ${resources.dashboards.disruption_intelligence.id}
+            warehouse_id: ${var.warehouse_id}

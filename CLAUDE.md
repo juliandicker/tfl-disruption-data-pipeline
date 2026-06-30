@@ -61,7 +61,15 @@ Liquid clustering on `customer_journeys`.
 
 ### Governance
 
-**Classification**: Enable Databricks agentic Data Classification on `silver` and `gold` after the pipeline first populates the tables (Catalog Explorer → catalog → Details → Data Classification → Enable). The engine applies `class.*` system governed tags to PII columns automatically within ~24 h. Do not hand-tag columns — let the classifier demonstrate the capability.
+**Classification**: Enable Databricks agentic Data Classification on `silver` and `gold` after the pipeline first populates the tables (Catalog Explorer → catalog → Details → Data Classification → Enable). The engine applies `class.*` system governed tags to PII columns automatically within ~24 h.
+
+The governance bootstrap (`governance/tag_pii_columns.sql`) only covers the original structured PII columns (`full_name`, `email`, `date_of_birth`, `home_postcode`). The following columns are **intentionally left untagged** in the bootstrap:
+
+- `silver.tfl.customer_journeys.telephone_number`
+- `bronze.tfl.customer_profiles.telephone_number`
+- `bronze.tfl.customer_profiles.customer_notes` (unstructured free-text, may contain embedded PII)
+
+This is deliberate: the classifier should detect and tag them within ~24 h, demonstrating what happens when new PII fields are added without a manual governance update — including PII buried in free-text. Do not add these to the bootstrap.
 
 **Entra groups** (provisioned by `simple-databricks-deployment` via Terraform + `azuread` provider):
 

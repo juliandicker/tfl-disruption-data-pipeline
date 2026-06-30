@@ -38,6 +38,7 @@ def customer_journeys_raw():
             profiles.full_name,
             profiles.email,
             profiles.date_of_birth,
+            profiles.telephone_number,
             profiles.home_postcode,
             profiles.card_id,
             profiles.home_station,
@@ -58,6 +59,10 @@ def customer_journeys_raw():
             (F.col("date_of_birth") < F.current_date())
             & (F.col("date_of_birth") > F.lit("1900-01-01").cast("date"))
         )
+        .withColumn(
+            "age",
+            F.floor(F.months_between(F.current_date(), F.col("date_of_birth")) / 12).cast("int"),
+        )
     )
 
 
@@ -65,7 +70,8 @@ dlt.create_streaming_table(
     name="customer_journeys",
     comment=(
         "Latest disruption state per customer-line pair. "
-        "Contains PII (full_name, email, home_postcode) — see ABAC policy. "
+        "Contains PII (full_name, email, date_of_birth, telephone_number, home_postcode) — see ABAC policy. "
+        "age is derived from date_of_birth at ingest time. "
         "Liquid-clustered on home_station and customer_id."
     ),
     cluster_by=["home_station", "customer_id"],
