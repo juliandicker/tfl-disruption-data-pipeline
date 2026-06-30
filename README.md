@@ -39,8 +39,10 @@ Both sources write directly to bronze. There is no landing layer because both th
 
 | Table | Description |
 |---|---|
-| `bronze.default.tfl_arrivals` | TfL tube line status per station-line combination. `raw_payload` + parsed fields + `ingested_at`. Liquid-clustered on `(line_id, ingested_at)`. |
-| `bronze.default.customer_profiles` | Synthetic customer profiles. `raw_payload` + parsed fields + `ingested_at`. Overwritten each run. |
+| `bronze.tfl.tfl_arrivals` | TfL tube line status per station-line combination. `raw_payload` + parsed fields + `ingested_at`. Liquid-clustered on `(line_id, ingested_at)`. |
+| `bronze.tfl.customer_profiles` | Synthetic customer profiles. `raw_payload` + `customer_id`, `full_name`, `email`, `date_of_birth`, `telephone_number`, `home_postcode`, `card_id`, `home_station`, `customer_notes` + `ingested_at`. Overwritten each run. |
+
+`customer_notes` is free-text CRM-style notes entered by staff or the customer across 2–5 timestamped entries per profile. Entries are a deliberate mix of clean operational notes and notes that embed PII (name, email, phone, address) — to exercise unstructured PII detection by Data Classification.
 
 **Bronze access**: zero group grants. Only the pipeline service principal reads/writes bronze. Run `python tests/test_bronze_access.py` to assert this is enforced.
 
@@ -50,13 +52,25 @@ Two separate pipelines handle the transform layer. Declarative Pipelines (former
 
 | Table | Contains PII | Description |
 |---|---|---|
-| `silver.default.customer_journeys` | Yes | Cleaned, deduplicated join of customer profiles to TfL disruptions on `home_station`. |
-| `gold.default.disruption_summary` | No | Aggregated disruption counts by line and day. |
-| `gold.default.notification_targets` | Yes | One row per affected customer per disrupted line, ready for alerting. Contains `email` — aggregation does not equal anonymisation. |
+| `silver.tfl.customer_journeys` | Yes | Cleaned, deduplicated join of customer profiles to TfL disruptions on `home_station`. Includes `telephone_number`, `date_of_birth`, and a derived `age` column (whole years at ingest time). SCD Type 1 streaming table. |
+| `gold.travel.disruption_summary` | No | Aggregated disruption counts by line and day. |
+| `gold.travel.notification_targets` | Yes | One row per affected customer per disrupted line, ready for alerting. Contains `full_name` and `email` — aggregation does not equal anonymisation. SCD Type 1 streaming table. |
 
 **Data quality expectations** (enforced in the pipeline event log):
 - `customer_journeys`: valid email format, `home_station` not null, `date_of_birth` plausible (not in future, not before 1900).
 - `disruption_summary`: `disruption_date` not null, `line_id` matches known TfL line reference list.
+
+### Platform metadata columns
+
+Every managed table carries three columns required by the data platform governance standard:
+
+| Column | Type | Set when | Purpose |
+|---|---|---|---|
+| `_inserted_at` | `TIMESTAMP` | First insert only | Immutable audit trail — preserved across SCD1 merges via `except_column_list` |
+| `_updated_at` | `TIMESTAMP` | Every write | Drives freshness SLA monitoring in `admin.shared.retention_compliance` |
+| `_delete_at` | `TIMESTAMP` | At insert time | Drives platform Auto TTL — rows are purged after this date |
+
+Retention periods: `tfl_arrivals` uses 2 years (raw operational data, no PII); all other tables use 7 years.
 
 ### Lakehouse Monitoring and dashboard refresh
 
@@ -91,7 +105,22 @@ Two tasks run in parallel after `run_gold_pipeline`:
 
 `sg-dbplat-pii-readers` and `sg-dbplat-data-stewards` are exempt from all masking via the policy `EXCEPT` clause.
 
-The governance-setup job also bootstraps the `class.*` tags directly onto known PII columns at run time, so masking is active immediately without waiting for the Data Classification scan. This requires a **one-time admin step**: grant the pipeline SP `ASSIGN` on `class.name`, `class.email_address`, `class.date_of_birth`, and `class.location` in Catalog Explorer → Govern → Governed Tags → each tag → Permissions.
+The `travel-governance-bootstrap` job must be run once after the pipeline first populates the tables. It has two parallel tasks:
+
+- **`tag_pii_columns`** — bootstraps `class.*` governed tags onto known PII columns so ABAC masking is active immediately, without waiting for Data Classification (~24h). `telephone_number` and `customer_notes` are intentionally omitted — left for Data Classification to detect automatically, demonstrating what happens when new PII fields are added without a manual governance update.
+- **`set_freshness_slas`** — sets `platform.freshness_sla` table properties on all five managed tables. The platform's `compute_freshness_metrics` job reads these to compute `sla_status` in `admin.shared.retention_compliance`.
+
+**Freshness SLAs:**
+
+| Table | SLA | Rationale |
+|---|---|---|
+| `bronze.tfl.tfl_arrivals` | `30m` | Real-time operational data; pipeline runs every 15 min |
+| `bronze.tfl.customer_profiles` | `1d` | Synthetic customer data; daily refresh is sufficient |
+| `silver.tfl.customer_journeys` | `1d` | Customer-scoped; SLA matches source profiles |
+| `gold.travel.disruption_summary` | `1h` | Operational; expected fresh after every pipeline run |
+| `gold.travel.notification_targets` | `1d` | Customer-scoped; SLA matches source profiles |
+
+This requires a **one-time admin step**: grant the pipeline SP `ASSIGN` on `class.name`, `class.email_address`, `class.date_of_birth`, and `class.location` in Catalog Explorer → Govern → Governed Tags → each tag → Permissions.
 
 ---
 
@@ -130,8 +159,8 @@ The platform team updates `AZURE_CLIENT_ID` and `DATABRICKS_HOST`. The data engi
 #    class.location in Catalog Explorer → Govern → Governed Tags (one-time admin step)
 # 4. Enable Data Classification on silver and gold catalogs
 #    (Catalog Explorer → catalog → Details → Data Classification → Enable)
-# 5. Apply ABAC masking policies (one-off, re-run after policy changes):
-databricks bundle run governance-setup
+# 5. Let the pipeline run at least once to populate the tables, then run the bootstrap:
+databricks bundle run travel-governance-bootstrap
 ```
 
 The `tfl-pipeline` job runs automatically on its 15-minute schedule from that point.
@@ -141,9 +170,9 @@ The `tfl-pipeline` job runs automatically on its 15-minute schedule from that po
 ## Common commands
 
 ```bash
-databricks bundle validate              # check bundle config without deploying
-databricks bundle run tfl-pipeline      # trigger a manual end-to-end run
-databricks bundle run governance-setup  # re-apply ABAC policies
+databricks bundle validate                        # check bundle config without deploying
+databricks bundle run tfl-pipeline                # trigger a manual end-to-end run
+databricks bundle run travel-governance-bootstrap # re-apply PII tags and freshness SLAs
 ```
 
 > Deployment (`databricks bundle deploy`) is handled exclusively by GitHub Actions on push to `master`.
