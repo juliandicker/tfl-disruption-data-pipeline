@@ -63,6 +63,9 @@ def customer_journeys_raw():
             "age",
             F.floor(F.months_between(F.current_date(), F.col("date_of_birth")) / 12).cast("int"),
         )
+        .withColumn("_inserted_at", F.current_timestamp())
+        .withColumn("_updated_at",  F.current_timestamp())
+        .withColumn("_delete_at",   F.date_add(F.current_date(), 365 * 7).cast("timestamp"))
     )
 
 
@@ -84,4 +87,5 @@ dlt.apply_changes(
     keys=["customer_id", "line_id"],
     sequence_by=F.col("ingested_at"),
     stored_as_scd_type=1,
+    except_column_list=["_inserted_at"],
 )

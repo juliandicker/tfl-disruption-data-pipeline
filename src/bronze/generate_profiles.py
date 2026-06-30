@@ -15,7 +15,7 @@ CDC is excluded by design; see README for rationale.
 import argparse
 import json
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from faker import Faker
 from pyspark.sql import SparkSession
@@ -164,7 +164,17 @@ def main():
     table = f"{catalog}.{schema}.customer_profiles"
     ingested_at = datetime.now(timezone.utc)
     profiles = [_generate() for _ in range(PROFILE_COUNT)]
-    rows = [{**p, "raw_payload": json.dumps(p), "ingested_at": ingested_at} for p in profiles]
+    rows = [
+        {
+            **p,
+            "raw_payload":  json.dumps(p),
+            "ingested_at":  ingested_at,
+            "_inserted_at": ingested_at,
+            "_updated_at":  ingested_at,
+            "_delete_at":   ingested_at + timedelta(days=365 * 7),
+        }
+        for p in profiles
+    ]
 
     spark.sql(f"CREATE SCHEMA IF NOT EXISTS {catalog}.{schema}")
 
@@ -179,16 +189,22 @@ def main():
             home_postcode    STRING,
             card_id          STRING,
             home_station     STRING,
-            customer_notes   STRING  COMMENT 'Free-text CRM notes entered by staff or the customer. May contain unstructured PII.',
-            ingested_at      TIMESTAMP
+            customer_notes   STRING    COMMENT 'Free-text CRM notes entered by staff or the customer. May contain unstructured PII.',
+            ingested_at      TIMESTAMP,
+            _inserted_at     TIMESTAMP COMMENT 'Platform: when this row first arrived in bronze. Immutable.',
+            _updated_at      TIMESTAMP COMMENT 'Platform: when this row was last written.',
+            _delete_at       TIMESTAMP COMMENT 'Platform: Auto TTL expiry. 7-year retention for customer data.'
         )
         COMMENT 'SYNTHETIC DATA — generated via Faker (en_GB). Represents hypothetical TfL contactless-card registrations. Not real customer data.'
     """)
 
     df = (
         spark.createDataFrame(rows)
-        .withColumn("ingested_at", F.col("ingested_at").cast("timestamp"))
+        .withColumn("ingested_at",   F.col("ingested_at").cast("timestamp"))
         .withColumn("date_of_birth", F.col("date_of_birth").cast("date"))
+        .withColumn("_inserted_at",  F.col("_inserted_at").cast("timestamp"))
+        .withColumn("_updated_at",   F.col("_updated_at").cast("timestamp"))
+        .withColumn("_delete_at",    F.col("_delete_at").cast("timestamp"))
     )
 
     df.write.format("delta").mode("overwrite").option("overwriteSchema", "true").saveAsTable(table)

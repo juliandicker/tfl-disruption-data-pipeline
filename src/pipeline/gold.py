@@ -46,6 +46,9 @@ def disruption_summary():
             F.first("disruption_description").alias("disruption_description"),
             F.max("ingested_at").alias("last_updated"),
         )
+        .withColumn("_inserted_at", F.current_timestamp())
+        .withColumn("_updated_at",  F.current_timestamp())
+        .withColumn("_delete_at",   F.date_add(F.current_date(), 365 * 7).cast("timestamp"))
     )
 
 
@@ -67,6 +70,9 @@ def notification_targets_raw():
             "disruption_description",
             "ingested_at",
         )
+        .withColumn("_inserted_at", F.current_timestamp())
+        .withColumn("_updated_at",  F.current_timestamp())
+        .withColumn("_delete_at",   F.date_add(F.current_date(), 365 * 7).cast("timestamp"))
     )
 
 
@@ -86,4 +92,5 @@ dlt.apply_changes(
     keys=["customer_id", "line_id"],
     sequence_by=F.col("ingested_at"),
     stored_as_scd_type=1,
+    except_column_list=["_inserted_at"],
 )

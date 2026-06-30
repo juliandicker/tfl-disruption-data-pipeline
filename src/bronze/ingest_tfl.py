@@ -11,7 +11,7 @@ TfL API key is optional (set TFL_APP_KEY env var for higher rate limits).
 import argparse
 import json
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import requests
 from pyspark.sql import SparkSession
@@ -127,6 +127,9 @@ def main():
                 "disruption_description": disruption.get("description", ""),
                 "affected_stops_json": json.dumps(affected_stops),
                 "ingested_at": ingested_at,
+                "_inserted_at": ingested_at,
+                "_updated_at": ingested_at,
+                "_delete_at": ingested_at + timedelta(days=730),
             })
 
     if not rows:
@@ -137,16 +140,19 @@ def main():
 
     spark.sql(f"""
         CREATE TABLE IF NOT EXISTS {table} (
-            raw_payload                 STRING  COMMENT 'Verbatim TfL API line response as JSON.',
+            raw_payload                 STRING    COMMENT 'Verbatim TfL API line response as JSON.',
             line_id                     STRING,
             line_name                   STRING,
             station_name                STRING,
-            status_severity             INT     COMMENT '10 = Good Service; lower values indicate disruption.',
+            status_severity             INT       COMMENT '10 = Good Service; lower values indicate disruption.',
             status_severity_description STRING,
             disruption_reason           STRING,
             disruption_description      STRING,
-            affected_stops_json         STRING  COMMENT 'JSON array of stop names affected by the disruption.',
-            ingested_at                 TIMESTAMP
+            affected_stops_json         STRING    COMMENT 'JSON array of stop names affected by the disruption.',
+            ingested_at                 TIMESTAMP,
+            _inserted_at                TIMESTAMP COMMENT 'Platform: when this row first arrived in bronze. Immutable.',
+            _updated_at                 TIMESTAMP COMMENT 'Platform: when this row was last written.',
+            _delete_at                  TIMESTAMP COMMENT 'Platform: Auto TTL expiry. Raw operational data — 2-year retention.'
         )
         CLUSTER BY (line_id, ingested_at)
         COMMENT 'TfL tube line status per station-line combination. Appended every 15 minutes.'
@@ -154,8 +160,11 @@ def main():
 
     df = (
         spark.createDataFrame(rows)
-        .withColumn("ingested_at", F.col("ingested_at").cast("timestamp"))
+        .withColumn("ingested_at",  F.col("ingested_at").cast("timestamp"))
         .withColumn("status_severity", F.col("status_severity").cast("int"))
+        .withColumn("_inserted_at", F.col("_inserted_at").cast("timestamp"))
+        .withColumn("_updated_at",  F.col("_updated_at").cast("timestamp"))
+        .withColumn("_delete_at",   F.col("_delete_at").cast("timestamp"))
     )
 
     df.write.format("delta").mode("append").saveAsTable(table)
