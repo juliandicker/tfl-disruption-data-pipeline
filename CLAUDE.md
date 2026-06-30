@@ -22,7 +22,9 @@ Deployment goes through GitHub Actions only (`push` to `master` → `.github/wor
 
 **TfL live API** — real public data, no PII. Arrivals and disruption data per line/station.
 
-**Synthetic traveller profiles** — generated via `Faker`. Fields: `customer_id`, `full_name`, `email`, `date_of_birth`, `home_postcode`, `card_id`, `home_station`. Joined to TfL data on `home_station` for a "personalised disruption alert" use case. Always labelled as synthetic, explicitly and prominently — never blur this line.
+**Synthetic traveller profiles** — generated via `Faker`. Fields: `customer_id`, `full_name`, `email`, `date_of_birth`, `telephone_number`, `home_postcode`, `card_id`, `home_station`, `customer_notes`. Joined to TfL data on `home_station` for a "personalised disruption alert" use case. Always labelled as synthetic, explicitly and prominently — never blur this line.
+
+`customer_notes` is free-text CRM-style notes (2–5 timestamped entries per profile) that deliberately mix clean operational entries with entries embedding PII — to exercise unstructured PII detection by Data Classification.
 
 ## Pipeline architecture
 
@@ -36,8 +38,8 @@ Both sources write directly to bronze. A plain Job is right here — this is an 
 
 | Table | Contents |
 |---|---|
-| `bronze.default.tfl_arrivals` | `raw_payload`, parsed fields, ingestion timestamp |
-| `bronze.default.customer_profiles` | `raw_payload`, parsed fields, ingestion timestamp |
+| `bronze.tfl.tfl_arrivals` | `raw_payload`, parsed fields, `ingested_at`, platform metadata columns |
+| `bronze.tfl.customer_profiles` | `raw_payload`, `customer_id`, `full_name`, `email`, `date_of_birth`, `telephone_number`, `home_postcode`, `card_id`, `home_station`, `customer_notes`, `ingested_at`, platform metadata columns |
 
 **Zero group grants on bronze.** Only the ingestion job's service principal reads/writes it. A negative test must confirm neither reader group can query bronze.
 
@@ -49,9 +51,9 @@ Use Declarative Pipelines (formerly DLT) for transforms: automatic orchestration
 
 | Table | Contents | PII |
 |---|---|---|
-| `silver.tfl.customer_journeys` | Cleaned, deduped, `customer_profiles` joined to arrivals/disruption on `home_station` | Yes — `full_name`, `email`, `date_of_birth`, `home_postcode` |
-| `gold.tfl.disruption_summary` | Aggregated, no PII | No |
-| `gold.tfl.notification_targets` | Actionable alert output | Yes — `full_name`, `email` (aggregation ≠ anonymisation) |
+| `silver.tfl.customer_journeys` | Cleaned, deduped, `customer_profiles` joined to arrivals/disruption on `home_station`. Includes `telephone_number`, `date_of_birth`, and derived `age` (whole years at ingest time). SCD Type 1. | Yes — `full_name`, `email`, `date_of_birth`, `telephone_number`, `home_postcode` |
+| `gold.travel.disruption_summary` | Aggregated disruption counts by line and day, no PII | No |
+| `gold.travel.notification_targets` | Actionable alert output, one row per customer per disrupted line. SCD Type 1. | Yes — `full_name`, `email` (aggregation ≠ anonymisation) |
 
 Liquid clustering on `customer_journeys`.
 
@@ -90,9 +92,23 @@ This is deliberate: the classifier should detect and tag them within ~24 h, demo
 
 `setup_abac.py` also bootstraps these tags directly onto the known PII columns at job run time so masking is active before the Data Classification scan completes. This requires the pipeline SP to have `ASSIGN` on each `class.*` tag — grant once in Catalog Explorer → Govern → Governed Tags → each tag → Permissions. (`databricks_grants` does not yet support `governed_tag` as a securable type in the Terraform provider.)
 
+**Platform metadata columns** — every managed table carries `_inserted_at` (immutable first-insert timestamp), `_updated_at` (refreshed every write, drives freshness monitoring), and `_delete_at` (Auto TTL expiry). SCD1 streaming tables use `except_column_list=["_inserted_at"]` in `apply_changes()` to preserve the original insert timestamp across merges. Retention: 2 years for `tfl_arrivals` (raw operational, no PII); 7 years for all other tables.
+
+**Freshness SLAs** — set as `platform.freshness_sla` table properties via `governance/set_freshness_slas.sql`, run as part of `travel-governance-bootstrap`. The platform's `compute_freshness_metrics` job reads these to populate `sla_status` in `admin.shared.retention_compliance`.
+
+| Table | SLA |
+|---|---|
+| `bronze.tfl.tfl_arrivals` | `30m` |
+| `bronze.tfl.customer_profiles` | `1d` |
+| `silver.tfl.customer_journeys` | `1d` |
+| `gold.travel.disruption_summary` | `1h` |
+| `gold.travel.notification_targets` | `1d` |
+
 ### Observability
 
-Lakehouse Monitoring on `silver.default.customer_journeys` and `gold.default.disruption_summary` — freshness, drift, anomaly detection.
+Lakehouse Monitoring on `silver.tfl.customer_journeys` and `gold.travel.disruption_summary` — freshness, drift, anomaly detection.
+
+The `tfl-pipeline` job ends with two parallel tasks after `run_gold_pipeline`: `setup_monitors` (idempotent Lakehouse Monitor creation) and `refresh_dashboard` (republishes the *TfL Disruption Intelligence* AI/BI Lakeview dashboard via the native `dashboard_task` type).
 
 FinOps/cost dashboards are explicitly out of scope here — that's a platform concern belonging to the infra repo, not a pipeline-specific concern.
 
@@ -104,7 +120,7 @@ FinOps/cost dashboards are explicitly out of scope here — that's a platform co
 | Forecasting/ML | Possible future MLOps phase; not folded into this DE-focused repo |
 | Lakeflow Connect | Built for SaaS/DB ingestion; source here is a REST API called directly |
 | Lakeflow Designer | No-code tool for citizen developers; undercuts engineering depth here |
-| Genie / AI-BI dashboard | Wanted, but use case undefined — decide once gold tables have real shape |
+| Genie | Space-based NL querying — possible addition once gold tables have enough history |
 
 ## Databricks infrastructure
 
@@ -125,7 +141,7 @@ The workspace URL and pipeline SP application ID change after each infra rebuild
 Metastore (uksouth)
 ├── bronze  → schema: tfl
 ├── silver  → schema: tfl
-└── gold    → schema: tfl
+└── gold    → schema: travel
 ```
 
 Storage account: `dbplatsimpleadls` (resource group: `dbplat-simple-rg`)
