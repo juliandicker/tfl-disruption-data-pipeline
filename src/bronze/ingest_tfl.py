@@ -158,6 +158,23 @@ def main():
         COMMENT 'TfL tube line status per station-line combination. Appended every 15 minutes.'
     """)
 
+    # CREATE TABLE IF NOT EXISTS is a no-op against a table that already exists with an
+    # older schema. Table ACLs disable automatic schema migration on append, so any
+    # column added to the DDL above must also be backfilled onto the live table here.
+    existing_cols = {f.name for f in spark.table(table).schema.fields}
+    platform_columns = [
+        ("_inserted_at", "TIMESTAMP", "Platform: when this row first arrived in bronze. Immutable."),
+        ("_updated_at",  "TIMESTAMP", "Platform: when this row was last written."),
+        ("_delete_at",   "TIMESTAMP", "Platform: Auto TTL expiry. Raw operational data — 2-year retention."),
+    ]
+    missing_cols = [
+        f"{name} {dtype} COMMENT '{comment}'"
+        for name, dtype, comment in platform_columns
+        if name not in existing_cols
+    ]
+    if missing_cols:
+        spark.sql(f"ALTER TABLE {table} ADD COLUMNS ({', '.join(missing_cols)})")
+
     df = (
         spark.createDataFrame(rows)
         .withColumn("ingested_at",  F.col("ingested_at").cast("timestamp"))
