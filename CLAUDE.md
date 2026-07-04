@@ -38,7 +38,7 @@ Both sources write directly to bronze. A plain Job is right here — this is an 
 
 | Table | Contents |
 |---|---|
-| `bronze.tfl.tfl_arrivals` | `raw_payload`, parsed fields, `ingested_at`, platform metadata columns |
+| `bronze.tfl.tfl_arrivals` | `raw_payload`, parsed fields, platform metadata columns |
 | `bronze.tfl.customer_profiles` | `raw_payload`, `customer_id`, `full_name`, `email`, `date_of_birth`, `telephone_number`, `home_postcode`, `card_id`, `home_station`, `customer_notes`, `ingested_at`, platform metadata columns |
 
 **Zero group grants on bronze.** Only the ingestion job's service principal reads/writes it. A negative test must confirm neither reader group can query bronze.

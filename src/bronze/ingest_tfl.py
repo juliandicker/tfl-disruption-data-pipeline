@@ -99,7 +99,7 @@ def main():
     catalog = _args.catalog
     schema = _args.schema
     table = f"{catalog}.{schema}.tfl_arrivals"
-    ingested_at = datetime.now(timezone.utc)
+    run_ts = datetime.now(timezone.utc)
 
     line_statuses = _get("/line/mode/tube/status")
     status_by_id = {line["id"]: line for line in line_statuses}
@@ -126,10 +126,9 @@ def main():
                 "disruption_reason": primary.get("reason", ""),
                 "disruption_description": disruption.get("description", ""),
                 "affected_stops_json": json.dumps(affected_stops),
-                "ingested_at": ingested_at,
-                "_inserted_at": ingested_at,
-                "_updated_at": ingested_at,
-                "_delete_at": ingested_at + timedelta(days=730),
+                "_inserted_at": run_ts,
+                "_updated_at": run_ts,
+                "_delete_at": run_ts + timedelta(days=730),
             })
 
     if not rows:
@@ -149,12 +148,11 @@ def main():
             disruption_reason           STRING,
             disruption_description      STRING,
             affected_stops_json         STRING    COMMENT 'JSON array of stop names affected by the disruption.',
-            ingested_at                 TIMESTAMP,
             _inserted_at                TIMESTAMP COMMENT 'Platform: when this row first arrived in bronze. Immutable.',
             _updated_at                 TIMESTAMP COMMENT 'Platform: when this row was last written.',
             _delete_at                  TIMESTAMP COMMENT 'Platform: Auto TTL expiry. Raw operational data — 2-year retention.'
         )
-        CLUSTER BY (line_id, ingested_at)
+        CLUSTER BY (line_id, _inserted_at)
         COMMENT 'TfL tube line status per station-line combination. Appended every 15 minutes.'
     """)
 
@@ -177,7 +175,6 @@ def main():
 
     df = (
         spark.createDataFrame(rows)
-        .withColumn("ingested_at",  F.col("ingested_at").cast("timestamp"))
         .withColumn("status_severity", F.col("status_severity").cast("int"))
         .withColumn("_inserted_at", F.col("_inserted_at").cast("timestamp"))
         .withColumn("_updated_at",  F.col("_updated_at").cast("timestamp"))
@@ -185,7 +182,7 @@ def main():
     )
 
     df.write.format("delta").mode("append").saveAsTable(table)
-    print(f"Wrote {len(rows)} rows to {table} at {ingested_at.isoformat()}")
+    print(f"Wrote {len(rows)} rows to {table} at {run_ts.isoformat()}")
 
 
 main()

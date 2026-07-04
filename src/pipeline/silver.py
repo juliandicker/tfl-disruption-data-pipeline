@@ -49,7 +49,7 @@ def customer_journeys_raw():
             disrupted.disruption_reason,
             disrupted.disruption_description,
             disrupted.affected_stops_json,
-            disrupted.ingested_at,
+            disrupted._inserted_at.alias("ingested_at"),
         )
         # Data quality filters: equivalent to expect_or_drop — invalid rows are
         # dropped here so apply_changes never processes them.
