@@ -3,7 +3,7 @@ Lakeflow Spark Declarative Pipeline — silver layer
 
 Produces silver.tfl.customer_journeys as a streaming table (SCD Type 1):
 the latest disruption state per customer-line pair, maintained by
-dlt.apply_changes() on keys (customer_id, line_id) sequenced by ingested_at.
+dlt.apply_changes() on keys (customer_id, line_id) sequenced by _updated_at.
 
 A streaming table (Delta-backed) is required — not a materialized view —
 so that Unity Catalog column masks can be applied to PII columns by the
@@ -16,6 +16,14 @@ from pyspark.sql import functions as F
 
 
 _EMAIL_RE = r"^[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}$"
+
+
+def _with_platform_columns(df, retention_days=365 * 7):
+    return (
+        df.withColumn("_inserted_at", F.current_timestamp())
+        .withColumn("_updated_at", F.current_timestamp())
+        .withColumn("_delete_at", F.date_add(F.current_date(), retention_days).cast("timestamp"))
+    )
 
 
 @dlt.view(name="customer_journeys_raw")
@@ -49,7 +57,6 @@ def customer_journeys_raw():
             disrupted.disruption_reason,
             disrupted.disruption_description,
             disrupted.affected_stops_json,
-            disrupted._inserted_at.alias("ingested_at"),
         )
         # Data quality filters: equivalent to expect_or_drop — invalid rows are
         # dropped here so apply_changes never processes them.
@@ -63,9 +70,7 @@ def customer_journeys_raw():
             "age",
             F.floor(F.months_between(F.current_date(), F.col("date_of_birth")) / 12).cast("int"),
         )
-        .withColumn("_inserted_at", F.current_timestamp())
-        .withColumn("_updated_at",  F.current_timestamp())
-        .withColumn("_delete_at",   F.date_add(F.current_date(), 365 * 7).cast("timestamp"))
+        .transform(_with_platform_columns)
     )
 
 
@@ -85,7 +90,7 @@ dlt.apply_changes(
     target="customer_journeys",
     source="customer_journeys_raw",
     keys=["customer_id", "line_id"],
-    sequence_by=F.col("ingested_at"),
+    sequence_by=F.col("_updated_at"),
     stored_as_scd_type=1,
     except_column_list=["_inserted_at"],
 )

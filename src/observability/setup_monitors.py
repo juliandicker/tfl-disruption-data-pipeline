@@ -22,7 +22,7 @@ MONITORS = [
         "table_name": f"{silver}.{schema}.customer_journeys",
         "assets_dir": "/Shared/monitors/customer_journeys",
         "output_schema_name": f"{silver}.{schema}",
-        "time_series": {"timestamp_col": "ingested_at", "granularities": ["1 day"]},
+        "time_series": {"timestamp_col": "_updated_at", "granularities": ["1 day"]},
     },
     {
         "table_name": f"{gold}.{gold_schema}.disruption_summary",

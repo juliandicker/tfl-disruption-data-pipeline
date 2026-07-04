@@ -21,6 +21,14 @@ KNOWN_LINE_IDS = [
 ]
 
 
+def _with_platform_columns(df, retention_days=365 * 7):
+    return (
+        df.withColumn("_inserted_at", F.current_timestamp())
+        .withColumn("_updated_at", F.current_timestamp())
+        .withColumn("_delete_at", F.date_add(F.current_date(), retention_days).cast("timestamp"))
+    )
+
+
 @dlt.table(
     name="disruption_summary",
     comment=(
@@ -38,17 +46,15 @@ def disruption_summary():
     schema = spark.conf.get("schema", "tfl")
     return (
         spark.table(f"{silver}.{schema}.customer_journeys")
-        .withColumn("disruption_date", F.to_date("ingested_at"))
+        .withColumn("disruption_date", F.to_date("_updated_at"))
         .groupBy("line_id", "line_name", "disruption_date", "status_severity_description")
         .agg(
             F.count("customer_id").alias("affected_customers"),
             F.countDistinct("home_station").alias("affected_stations"),
             F.first("disruption_description").alias("disruption_description"),
-            F.max("ingested_at").alias("last_updated"),
+            F.max("_updated_at").alias("last_updated"),
         )
-        .withColumn("_inserted_at", F.current_timestamp())
-        .withColumn("_updated_at",  F.current_timestamp())
-        .withColumn("_delete_at",   F.date_add(F.current_date(), 365 * 7).cast("timestamp"))
+        .transform(_with_platform_columns)
     )
 
 
@@ -68,11 +74,8 @@ def notification_targets_raw():
             "status_severity_description",
             "disruption_reason",
             "disruption_description",
-            "ingested_at",
         )
-        .withColumn("_inserted_at", F.current_timestamp())
-        .withColumn("_updated_at",  F.current_timestamp())
-        .withColumn("_delete_at",   F.date_add(F.current_date(), 365 * 7).cast("timestamp"))
+        .transform(_with_platform_columns)
     )
 
 
@@ -90,7 +93,7 @@ dlt.apply_changes(
     target="notification_targets",
     source="notification_targets_raw",
     keys=["customer_id", "line_id"],
-    sequence_by=F.col("ingested_at"),
+    sequence_by=F.col("_updated_at"),
     stored_as_scd_type=1,
     except_column_list=["_inserted_at"],
 )
