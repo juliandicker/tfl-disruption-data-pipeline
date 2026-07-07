@@ -40,7 +40,7 @@ Both sources write directly to bronze. There is no landing layer because both th
 | Table | Description |
 |---|---|
 | `bronze.tfl.tfl_arrivals` | TfL tube line status per station-line combination. `raw_payload` + parsed fields + platform metadata columns. Liquid-clustered on `(line_id, _inserted_at)`. |
-| `bronze.tfl.customer_profiles` | Synthetic customer profiles. `raw_payload` + `customer_id`, `full_name`, `email`, `date_of_birth`, `telephone_number`, `home_postcode`, `card_id`, `home_station`, `customer_notes` + `ingested_at`. Overwritten each run. |
+| `bronze.tfl.customer_profiles` | Synthetic customer profiles. `raw_payload` + `customer_id`, `full_name`, `email`, `date_of_birth`, `telephone_number`, `home_postcode`, `card_id`, `home_station`, `customer_notes` + platform metadata columns. Overwritten each run. |
 
 `customer_notes` is free-text CRM-style notes entered by staff or the customer across 2–5 timestamped entries per profile. Entries are a deliberate mix of clean operational notes and notes that embed PII (name, email, phone, address) — to exercise unstructured PII detection by Data Classification.
 

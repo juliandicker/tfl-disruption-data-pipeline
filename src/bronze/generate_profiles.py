@@ -162,16 +162,15 @@ def main():
     catalog = _args.catalog
     schema = _args.schema
     table = f"{catalog}.{schema}.customer_profiles"
-    ingested_at = datetime.now(timezone.utc)
+    now = datetime.now(timezone.utc)
     profiles = [_generate() for _ in range(PROFILE_COUNT)]
     rows = [
         {
             **p,
             "raw_payload":  json.dumps(p),
-            "ingested_at":  ingested_at,
-            "_inserted_at": ingested_at,
-            "_updated_at":  ingested_at,
-            "_delete_at":   ingested_at + timedelta(days=365 * 7),
+            "_inserted_at": now,
+            "_updated_at":  now,
+            "_delete_at":   now + timedelta(days=365 * 7),
         }
         for p in profiles
     ]
@@ -190,7 +189,6 @@ def main():
             card_id          STRING,
             home_station     STRING,
             customer_notes   STRING    COMMENT 'Free-text CRM notes entered by staff or the customer. May contain unstructured PII.',
-            ingested_at      TIMESTAMP,
             _inserted_at     TIMESTAMP COMMENT 'Platform: when this row first arrived in bronze. Immutable.',
             _updated_at      TIMESTAMP COMMENT 'Platform: when this row was last written.',
             _delete_at       TIMESTAMP COMMENT 'Platform: Auto TTL expiry. 7-year retention for customer data.'
@@ -200,7 +198,6 @@ def main():
 
     df = (
         spark.createDataFrame(rows)
-        .withColumn("ingested_at",   F.col("ingested_at").cast("timestamp"))
         .withColumn("date_of_birth", F.col("date_of_birth").cast("date"))
         .withColumn("_inserted_at",  F.col("_inserted_at").cast("timestamp"))
         .withColumn("_updated_at",   F.col("_updated_at").cast("timestamp"))
