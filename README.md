@@ -174,6 +174,42 @@ databricks bundle run travel-governance-bootstrap
 
 The `tfl-pipeline` job runs automatically on its 15-minute schedule from that point.
 
+### Before tearing down / after rebuild — bronze seed data
+
+Since teardown destroys the `dbplatsimpleadls` storage account along with the
+catalogs, `bronze.tfl.tfl_arrivals` doesn't survive a rebuild — `tfl-pipeline`
+would otherwise start from an empty table with only the live TfL API's current
+snapshot. `tools/seed_data/` holds a one-off export / reload script pair that
+captures the accumulated `tfl_arrivals` history into
+`seed_data/bronze/tfl_arrivals.parquet` before teardown, and restores it after.
+
+Both scripts run **locally** against the Databricks SQL Statement Execution
+API (via `databricks-sdk`) using your own admin credentials — not as a
+deployed bundle job, cluster job, or uploaded workspace file. This works
+despite bronze's zero group grants because an admin identity has implicit
+full privileges regardless of compute type.
+
+`customer_profiles` is deliberately **not** seeded — it's single-generation
+Faker output with no accumulated history worth preserving, and
+`generate_profiles.py` fully overwrites it on every `tfl-pipeline` run anyway.
+Just let that task run after rebuild to repopulate it with an equally
+realistic fresh batch.
+
+```bash
+pip install databricks-sdk pandas pyarrow
+
+# Before teardown — capture current tfl_arrivals contents
+python tools/seed_data/export_bronze_seed.py --profile <cli-profile>
+git add seed_data/ && git commit -m "Capture tfl_arrivals seed data before teardown"
+
+# After rebuild + redeploy — restore it, before enabling the live schedule
+python tools/seed_data/reload_bronze_seed.py --profile <cli-profile>
+```
+
+Reload shifts `_inserted_at`/`_updated_at` forward so the most recent captured
+row lands at "now" (freshness SLA passes immediately) while preserving the
+relative spread between rows. See the docstrings in both scripts for details.
+
 ---
 
 ## Common commands
