@@ -16,11 +16,15 @@ SET TBLPROPERTIES ('platform.freshness_sla' = '30m');
 ALTER TABLE bronze.tfl.customer_profiles
 SET TBLPROPERTIES ('platform.freshness_sla' = '1d');
 
-ALTER TABLE silver.tfl.customer_journeys
+-- customer_journeys and notification_targets are Lakeflow streaming tables
+-- (dlt.create_streaming_table) — plain ALTER TABLE fails with
+-- INVALID_TARGET_FOR_SET_TBLPROPERTIES_COMMAND; the engine requires
+-- ALTER STREAMING TABLE for these two specifically.
+ALTER STREAMING TABLE silver.tfl.customer_journeys
 SET TBLPROPERTIES ('platform.freshness_sla' = '1d');
 
 ALTER TABLE gold.travel.disruption_summary
 SET TBLPROPERTIES ('platform.freshness_sla' = '1h');
 
-ALTER TABLE gold.travel.notification_targets
+ALTER STREAMING TABLE gold.travel.notification_targets
 SET TBLPROPERTIES ('platform.freshness_sla' = '1d');

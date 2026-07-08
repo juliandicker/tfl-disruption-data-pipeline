@@ -14,10 +14,17 @@
 -- including PII embedded in unstructured free-text (customer_notes). This showcases
 -- what happens in practice when new PII fields are added without a governance update.
 
-ALTER TABLE silver.tfl.customer_journeys  ALTER COLUMN full_name     SET TAGS ('class.name' = '');
-ALTER TABLE silver.tfl.customer_journeys  ALTER COLUMN email         SET TAGS ('class.email_address' = '');
-ALTER TABLE silver.tfl.customer_journeys  ALTER COLUMN date_of_birth SET TAGS ('class.date_of_birth' = '');
-ALTER TABLE silver.tfl.customer_journeys  ALTER COLUMN home_postcode SET TAGS ('class.location' = '');
+-- customer_journeys and notification_targets are Lakeflow streaming tables
+-- (dlt.create_streaming_table). set_freshness_slas.sql hit
+-- INVALID_TARGET_FOR_SET_TBLPROPERTIES_COMMAND on plain ALTER TABLE against
+-- these same two tables and needed ALTER STREAMING TABLE instead — applying
+-- the same form here as a precaution, though unconfirmed for ALTER COLUMN
+-- ... SET TAGS specifically (this script has only been observed failing on
+-- the ASSIGN permission check, before reaching a syntax error).
+ALTER STREAMING TABLE silver.tfl.customer_journeys  ALTER COLUMN full_name     SET TAGS ('class.name' = '');
+ALTER STREAMING TABLE silver.tfl.customer_journeys  ALTER COLUMN email         SET TAGS ('class.email_address' = '');
+ALTER STREAMING TABLE silver.tfl.customer_journeys  ALTER COLUMN date_of_birth SET TAGS ('class.date_of_birth' = '');
+ALTER STREAMING TABLE silver.tfl.customer_journeys  ALTER COLUMN home_postcode SET TAGS ('class.location' = '');
 
-ALTER TABLE gold.travel.notification_targets ALTER COLUMN full_name  SET TAGS ('class.name' = '');
-ALTER TABLE gold.travel.notification_targets ALTER COLUMN email      SET TAGS ('class.email_address' = '');
+ALTER STREAMING TABLE gold.travel.notification_targets ALTER COLUMN full_name  SET TAGS ('class.name' = '');
+ALTER STREAMING TABLE gold.travel.notification_targets ALTER COLUMN email      SET TAGS ('class.email_address' = '');
