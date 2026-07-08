@@ -36,6 +36,12 @@ fake = Faker("en_GB")
 # would need its own table and is a deliberately deferred follow-up. See
 # CLAUDE.md's purpose-based retention table.
 RETENTION_DAYS_CUSTOMER_PROFILE = 365 * 2
+
+# Synthetic customer data; daily refresh is sufficient. Set alongside the
+# table definition — see ingest_tfl.py's FRESHNESS_SLA for why not via a
+# separate governance script.
+FRESHNESS_SLA = "1d"
+
 Faker.seed(0)  # reproducible within a single run; seed resets on each job execution
 
 # Must stay in sync with STATION_LINES in ingest_tfl.py so the silver join finds matches.
@@ -202,6 +208,7 @@ def main():
             _delete_at       TIMESTAMP COMMENT 'Platform: Auto TTL expiry. 2-year retention — customer profile data for the personalisation feature.'
         )
         COMMENT 'SYNTHETIC DATA — generated via Faker (en_GB). Represents hypothetical TfL contactless-card registrations. Not real customer data.'
+        TBLPROPERTIES ('platform.freshness_sla' = '{FRESHNESS_SLA}')
     """)
 
     df = (
@@ -213,6 +220,13 @@ def main():
     )
 
     df.write.format("delta").mode("overwrite").option("overwriteSchema", "true").saveAsTable(table)
+
+    # CREATE TABLE IF NOT EXISTS only applies TBLPROPERTIES on first creation,
+    # and overwriteSchema writes aren't guaranteed to preserve existing table
+    # properties — ALTER unconditionally, after the write, so this is the
+    # last word regardless. See ingest_tfl.py for the same pattern.
+    spark.sql(f"ALTER TABLE {table} SET TBLPROPERTIES ('platform.freshness_sla' = '{FRESHNESS_SLA}')")
+
     print(f"Wrote {PROFILE_COUNT} synthetic profiles to {table}")
 
 

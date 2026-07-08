@@ -27,6 +27,13 @@ APP_KEY = os.getenv("TFL_APP_KEY", "")
 # legal one. See CLAUDE.md's purpose-based retention table.
 RETENTION_DAYS_OPERATIONAL = 365 * 2
 
+# Real-time operational data; pipeline runs every 15m. Set alongside the
+# table definition (not via a separate governance script) — consistent with
+# how silver/gold set platform.freshness_sla via table_properties=, since
+# Databricks rejects ALTER TABLE/ALTER STREAMING TABLE SET TBLPROPERTIES
+# against pipeline-managed objects entirely.
+FRESHNESS_SLA = "30m"
+
 _parser = argparse.ArgumentParser()
 _parser.add_argument("--catalog", default="bronze")
 _parser.add_argument("--schema", default="tfl")
@@ -159,6 +166,7 @@ def main():
         )
         CLUSTER BY (line_id, _inserted_at)
         COMMENT 'TfL tube line status per station-line combination. Appended every 15 minutes.'
+        TBLPROPERTIES ('platform.freshness_sla' = '{FRESHNESS_SLA}')
     """)
 
     df = (
@@ -170,6 +178,13 @@ def main():
     )
 
     df.write.format("delta").mode("append").saveAsTable(table)
+
+    # CREATE TABLE IF NOT EXISTS only applies TBLPROPERTIES on first creation —
+    # ALTER unconditionally too, after the write, so it's backfilled on an
+    # already-existing table and stays reconciled on every run, matching how
+    # Lakeflow pipelines re-apply table_properties on every update.
+    spark.sql(f"ALTER TABLE {table} SET TBLPROPERTIES ('platform.freshness_sla' = '{FRESHNESS_SLA}')")
+
     print(f"Wrote {len(rows)} rows to {table} at {run_ts.isoformat()}")
 
 

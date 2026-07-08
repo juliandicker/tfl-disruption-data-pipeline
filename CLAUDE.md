@@ -104,15 +104,17 @@ This is deliberate: the classifier should detect and tag them within ~24 h, demo
 
 Retention-days constants are defined locally in each producer file (`ingest_tfl.py`, `generate_profiles.py`, `silver.py`, `gold.py`, `reload_bronze_seed.py`), not via a shared/importable module — Lakeflow pipeline `libraries:` wiring and standalone `spark_python_task`s don't reliably share a common Python path across all five call sites. This table is the source of truth for the purpose → retention-days mapping; keep per-file constants in sync with it.
 
-**Freshness SLAs** — set as `platform.freshness_sla` table properties via `governance/set_freshness_slas.sql`, run as part of `travel-governance-bootstrap`. The platform's `compute_freshness_metrics` job reads these to populate `sla_status` in `admin.shared.retention_compliance`.
+**Freshness SLAs** — set as `platform.freshness_sla` table properties, defined directly alongside each table's own definition rather than via a separate governance script. The platform's `compute_freshness_metrics` job reads these to populate `sla_status` in `admin.shared.retention_compliance`.
 
-| Table | SLA |
-|---|---|
-| `bronze.tfl.tfl_arrivals` | `30m` |
-| `bronze.tfl.customer_profiles` | `1d` |
-| `silver.tfl.customer_journeys` | `1d` |
-| `gold.travel.disruption_summary` | `1h` |
-| `gold.travel.notification_targets` | `1d` |
+| Table | SLA | Set via |
+|---|---|---|
+| `bronze.tfl.tfl_arrivals` | `30m` | `TBLPROPERTIES` in the `CREATE TABLE` DDL + an unconditional `ALTER TABLE` after every write, in `src/bronze/ingest_tfl.py` |
+| `bronze.tfl.customer_profiles` | `1d` | Same pattern, in `src/bronze/generate_profiles.py` |
+| `silver.tfl.customer_journeys` | `1d` | `table_properties=` in `src/pipeline/silver.py` |
+| `gold.travel.disruption_summary` | `1h` | `table_properties=` in `src/pipeline/gold.py` |
+| `gold.travel.notification_targets` | `1d` | `table_properties=` in `src/pipeline/gold.py` |
+
+Bronze tables need both the DDL clause *and* a post-write `ALTER TABLE` because `CREATE TABLE IF NOT EXISTS` only applies `TBLPROPERTIES` on first creation — an already-existing table (the normal case after the first deploy) would never pick it up otherwise, and an `overwriteSchema` write isn't guaranteed to preserve existing table properties either. Silver/gold tables are Lakeflow Declarative Pipeline-managed (streaming tables / materialized view) — Databricks rejects `SET TBLPROPERTIES` via `ALTER TABLE` *or* `ALTER STREAMING TABLE` against pipeline-managed objects entirely (`STREAMING_TABLE_OPERATION_NOT_ALLOWED`), so their SLA can only be set in the pipeline definition, same as `delta.enableChangeDataFeed` already is.
 
 ### Observability
 

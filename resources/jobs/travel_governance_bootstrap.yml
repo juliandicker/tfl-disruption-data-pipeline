@@ -10,9 +10,13 @@ resources:
         and gold.travel so ABAC masking is active immediately, without waiting for the
         Data Classification scanner (~24h lag).
 
-        set_freshness_slas: sets platform.freshness_sla table properties on every managed
-        table so the platform-governance-daily job can compute sla_status in
-        admin.shared.retention_compliance.
+        platform.freshness_sla table properties (read by the platform-governance-daily
+        job to compute sla_status in admin.shared.retention_compliance) are set directly
+        alongside each table's definition — TBLPROPERTIES in the bronze CREATE TABLE
+        statements (src/bronze/ingest_tfl.py, generate_profiles.py), table_properties= in
+        the silver/gold pipeline definitions (src/pipeline/silver.py, gold.py) — rather
+        than via a separate governance script, since Databricks rejects SET TBLPROPERTIES
+        via ALTER against Lakeflow-managed streaming tables/materialized views entirely.
 
         Prerequisite: grant the pipeline SP ASSIGN on each class.* governed tag in
         Catalog Explorer → Govern → Governed Tags → each tag → Permissions.
@@ -26,9 +30,3 @@ resources:
             warehouse_id: ${var.warehouse_id}
             file:
               path: ${workspace.file_path}/governance/tag_pii_columns.sql
-
-        - task_key: set_freshness_slas
-          sql_task:
-            warehouse_id: ${var.warehouse_id}
-            file:
-              path: ${workspace.file_path}/governance/set_freshness_slas.sql

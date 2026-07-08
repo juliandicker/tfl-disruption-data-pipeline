@@ -113,20 +113,21 @@ Two tasks run in parallel after `run_gold_pipeline`:
 
 `sg-dbplat-pii-readers` and `sg-dbplat-data-stewards` are exempt from all masking via the policy `EXCEPT` clause.
 
-The `travel-governance-bootstrap` job must be run once after the pipeline first populates the tables. It has two parallel tasks:
+The `travel-governance-bootstrap` job must be run once after the pipeline first populates the tables. It has one task:
 
 - **`tag_pii_columns`** — bootstraps `class.*` governed tags onto known PII columns so ABAC masking is active immediately, without waiting for Data Classification (~24h). `telephone_number` and `customer_notes` are intentionally omitted — left for Data Classification to detect automatically, demonstrating what happens when new PII fields are added without a manual governance update.
-- **`set_freshness_slas`** — sets `platform.freshness_sla` table properties on all five managed tables. The platform's `compute_freshness_metrics` job reads these to compute `sla_status` in `admin.shared.retention_compliance`.
 
-**Freshness SLAs:**
+**Freshness SLAs** are not set via this bootstrap job — each table's `platform.freshness_sla` is defined directly alongside its own definition:
 
-| Table | SLA | Rationale |
-|---|---|---|
-| `bronze.tfl.tfl_arrivals` | `30m` | Real-time operational data; pipeline runs every 15 min |
-| `bronze.tfl.customer_profiles` | `1d` | Synthetic customer data; daily refresh is sufficient |
-| `silver.tfl.customer_journeys` | `1d` | Customer-scoped; SLA matches source profiles |
-| `gold.travel.disruption_summary` | `1h` | Operational; expected fresh after every pipeline run |
-| `gold.travel.notification_targets` | `1d` | Customer-scoped; SLA matches source profiles |
+| Table | SLA | Rationale | Set via |
+|---|---|---|---|
+| `bronze.tfl.tfl_arrivals` | `30m` | Real-time operational data; pipeline runs every 15 min | `TBLPROPERTIES` in the `CREATE TABLE` DDL + a post-write `ALTER TABLE`, in `src/bronze/ingest_tfl.py` |
+| `bronze.tfl.customer_profiles` | `1d` | Synthetic customer data; daily refresh is sufficient | Same pattern, in `src/bronze/generate_profiles.py` |
+| `silver.tfl.customer_journeys` | `1d` | Customer-scoped; SLA matches source profiles | `table_properties=` in `src/pipeline/silver.py` |
+| `gold.travel.disruption_summary` | `1h` | Operational; expected fresh after every pipeline run | `table_properties=` in `src/pipeline/gold.py` |
+| `gold.travel.notification_targets` | `1d` | Customer-scoped; SLA matches source profiles | `table_properties=` in `src/pipeline/gold.py` |
+
+Silver/gold tables are Lakeflow Declarative Pipeline-managed (streaming tables / materialized view) — Databricks rejects `SET TBLPROPERTIES` via `ALTER TABLE`/`ALTER STREAMING TABLE` against pipeline-managed objects (`STREAMING_TABLE_OPERATION_NOT_ALLOWED`), so their SLA can only be set in the pipeline definition, the same way `delta.enableChangeDataFeed` already is. Bronze tables need both the DDL clause *and* the post-write `ALTER TABLE` because `CREATE TABLE IF NOT EXISTS` only applies `TBLPROPERTIES` on first creation, and an `overwriteSchema` write isn't guaranteed to preserve existing table properties.
 
 This requires a **one-time admin step**: grant the pipeline SP `ASSIGN` on `class.name`, `class.email_address`, `class.date_of_birth`, and `class.location` in Catalog Explorer → Govern → Governed Tags → each tag → Permissions.
 

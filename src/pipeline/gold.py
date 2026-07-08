@@ -44,6 +44,11 @@ def _with_retention(df, retention_days):
         "Aggregated disruption counts by line and day. No PII. "
         "Data quality expectations enforce timestamp validity and known line names."
     ),
+    # platform.freshness_sla is set here rather than via governance SQL's
+    # ALTER TABLE — Databricks rejects TBLPROPERTIES changes made via ALTER
+    # against pipeline-managed objects (materialized views included); table
+    # properties on these can only be set from the pipeline definition.
+    table_properties={"platform.freshness_sla": "1h"},
 )
 @dlt.expect("disruption_date_not_null", "disruption_date IS NOT NULL")
 @dlt.expect(
@@ -107,7 +112,9 @@ dlt.create_streaming_table(
         "Contains email — aggregation does not equal anonymisation. "
         "ABAC masking policy applies to full_name and email for standard-readers."
     ),
-    table_properties={"delta.enableChangeDataFeed": "true"},
+    # platform.freshness_sla is set here rather than via governance SQL's
+    # ALTER TABLE — see disruption_summary above for why.
+    table_properties={"delta.enableChangeDataFeed": "true", "platform.freshness_sla": "1d"},
 )
 
 dlt.apply_changes(

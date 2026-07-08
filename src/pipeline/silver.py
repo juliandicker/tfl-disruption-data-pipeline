@@ -104,7 +104,11 @@ dlt.create_streaming_table(
         "Liquid-clustered on home_station and customer_id."
     ),
     cluster_by=["home_station", "customer_id"],
-    table_properties={"delta.enableChangeDataFeed": "true"},
+    # platform.freshness_sla is set here rather than via governance SQL's
+    # ALTER TABLE — Databricks rejects ALTER (STREAMING) TABLE SET
+    # TBLPROPERTIES against pipeline-managed streaming tables entirely;
+    # table properties on these can only be set from the pipeline definition.
+    table_properties={"delta.enableChangeDataFeed": "true", "platform.freshness_sla": "1d"},
 )
 
 dlt.apply_changes(
