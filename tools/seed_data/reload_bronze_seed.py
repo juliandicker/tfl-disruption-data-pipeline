@@ -35,9 +35,12 @@ re-run. Under --ci, that refusal becomes a silent no-op (exit 0) instead of
 a hard failure, since "already seeded" is the expected steady state on every
 deploy after the first — it shouldn't turn the workflow red.
 
-Rows are inserted one at a time via parameterized statements (not string-
-interpolated SQL) — raw_payload is arbitrary JSON text and needs safe
-binding, not manual quote-escaping.
+Rows are inserted in batches via a single multi-row parameterized INSERT
+per batch (not string-interpolated SQL) — raw_payload is arbitrary JSON
+text and needs safe binding, not manual quote-escaping. Batch size is
+capped at 20 rows (240 named parameters) to stay under the Statement
+Execution API's 255-parameter-per-statement limit — inserting one row at
+a time took ~1500 round trips and 15+ minutes in CI.
 
 Usage:
     pip install databricks-sdk pandas pyarrow
@@ -85,18 +88,44 @@ TABLE_DDL = """
     COMMENT 'TfL tube line status per station-line combination. Appended every 15 minutes.'
 """
 
-INSERT_SQL = """
+INSERT_HEADER = """
     INSERT INTO {table} (
         raw_payload, line_id, line_name, station_name, status_severity,
         status_severity_description, disruption_reason, disruption_description,
         affected_stops_json, _inserted_at, _updated_at, _delete_at
-    ) VALUES (
-        :raw_payload, :line_id, :line_name, :station_name, CAST(:status_severity AS INT),
-        :status_severity_description, :disruption_reason, :disruption_description,
-        :affected_stops_json, CAST(:inserted_at AS TIMESTAMP), CAST(:updated_at AS TIMESTAMP),
-        CAST(:delete_at AS TIMESTAMP)
-    )
+    ) VALUES
 """
+
+# 12 named parameters per row; the Statement Execution API caps a statement
+# at 255 named parameters total, so 20 rows (240 params) leaves headroom.
+BATCH_SIZE = 20
+
+
+def _row_values_clause(i: int) -> str:
+    return (
+        f"(:raw_payload_{i}, :line_id_{i}, :line_name_{i}, :station_name_{i}, "
+        f"CAST(:status_severity_{i} AS INT), :status_severity_description_{i}, "
+        f":disruption_reason_{i}, :disruption_description_{i}, :affected_stops_json_{i}, "
+        f"CAST(:inserted_at_{i} AS TIMESTAMP), CAST(:updated_at_{i} AS TIMESTAMP), "
+        f"CAST(:delete_at_{i} AS TIMESTAMP))"
+    )
+
+
+def _row_parameters(i: int, row) -> list[StatementParameterListItem]:
+    return [
+        StatementParameterListItem(name=f"raw_payload_{i}", value=row["raw_payload"]),
+        StatementParameterListItem(name=f"line_id_{i}", value=row["line_id"]),
+        StatementParameterListItem(name=f"line_name_{i}", value=row["line_name"]),
+        StatementParameterListItem(name=f"station_name_{i}", value=row["station_name"]),
+        StatementParameterListItem(name=f"status_severity_{i}", value=str(row["status_severity"])),
+        StatementParameterListItem(name=f"status_severity_description_{i}", value=row["status_severity_description"]),
+        StatementParameterListItem(name=f"disruption_reason_{i}", value=row["disruption_reason"]),
+        StatementParameterListItem(name=f"disruption_description_{i}", value=row["disruption_description"]),
+        StatementParameterListItem(name=f"affected_stops_json_{i}", value=row["affected_stops_json"]),
+        StatementParameterListItem(name=f"inserted_at_{i}", value=row["_inserted_at"].isoformat()),
+        StatementParameterListItem(name=f"updated_at_{i}", value=row["_updated_at"].isoformat()),
+        StatementParameterListItem(name=f"delete_at_{i}", value=row["_delete_at"].isoformat()),
+    ]
 
 
 def _resolve_warehouse_id(w: WorkspaceClient) -> str:
@@ -149,24 +178,15 @@ def main():
     _exec(w, warehouse_id, f"CREATE SCHEMA IF NOT EXISTS {args.catalog}.{args.schema}")
     _exec(w, warehouse_id, TABLE_DDL.format(table=table))
 
-    for _, row in df.iterrows():
-        _exec(
-            w, warehouse_id, INSERT_SQL.format(table=table),
-            parameters=[
-                StatementParameterListItem(name="raw_payload", value=row["raw_payload"]),
-                StatementParameterListItem(name="line_id", value=row["line_id"]),
-                StatementParameterListItem(name="line_name", value=row["line_name"]),
-                StatementParameterListItem(name="station_name", value=row["station_name"]),
-                StatementParameterListItem(name="status_severity", value=str(row["status_severity"])),
-                StatementParameterListItem(name="status_severity_description", value=row["status_severity_description"]),
-                StatementParameterListItem(name="disruption_reason", value=row["disruption_reason"]),
-                StatementParameterListItem(name="disruption_description", value=row["disruption_description"]),
-                StatementParameterListItem(name="affected_stops_json", value=row["affected_stops_json"]),
-                StatementParameterListItem(name="inserted_at", value=row["_inserted_at"].isoformat()),
-                StatementParameterListItem(name="updated_at", value=row["_updated_at"].isoformat()),
-                StatementParameterListItem(name="delete_at", value=row["_delete_at"].isoformat()),
-            ],
-        )
+    for start in range(0, len(df), BATCH_SIZE):
+        batch = df.iloc[start:start + BATCH_SIZE]
+        values_sql = ",\n        ".join(_row_values_clause(i) for i in range(len(batch)))
+        parameters = [
+            param
+            for i, (_, row) in enumerate(batch.iterrows())
+            for param in _row_parameters(i, row)
+        ]
+        _exec(w, warehouse_id, INSERT_HEADER.format(table=table) + values_sql, parameters=parameters)
 
     print(f"Reloaded {len(df)} seed rows into {table}")
 
