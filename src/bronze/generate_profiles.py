@@ -28,6 +28,14 @@ _parser.add_argument("--catalog", default="bronze")
 _parser.add_argument("--schema", default="tfl")
 _args, _ = _parser.parse_known_args()
 fake = Faker("en_GB")
+
+# Purpose: customer profile/identity data powering the personalisation
+# feature — bounded to that purpose rather than an unjustified blanket
+# "customer data" default. customer_notes (unstructured, embeds PII) shares
+# this row-level clock; splitting it onto its own, likely shorter, retention
+# would need its own table and is a deliberately deferred follow-up. See
+# CLAUDE.md's purpose-based retention table.
+RETENTION_DAYS_CUSTOMER_PROFILE = 365 * 2
 Faker.seed(0)  # reproducible within a single run; seed resets on each job execution
 
 # Must stay in sync with STATION_LINES in ingest_tfl.py so the silver join finds matches.
@@ -170,7 +178,7 @@ def main():
             "raw_payload":  json.dumps(p),
             "_inserted_at": now,
             "_updated_at":  now,
-            "_delete_at":   now + timedelta(days=365 * 7),
+            "_delete_at":   now + timedelta(days=RETENTION_DAYS_CUSTOMER_PROFILE),
         }
         for p in profiles
     ]
@@ -191,7 +199,7 @@ def main():
             customer_notes   STRING    COMMENT 'Free-text CRM notes entered by staff or the customer. May contain unstructured PII.',
             _inserted_at     TIMESTAMP COMMENT 'Platform: when this row first arrived in bronze. Immutable.',
             _updated_at      TIMESTAMP COMMENT 'Platform: when this row was last written.',
-            _delete_at       TIMESTAMP COMMENT 'Platform: Auto TTL expiry. 7-year retention for customer data.'
+            _delete_at       TIMESTAMP COMMENT 'Platform: Auto TTL expiry. 2-year retention — customer profile data for the personalisation feature.'
         )
         COMMENT 'SYNTHETIC DATA — generated via Faker (en_GB). Represents hypothetical TfL contactless-card registrations. Not real customer data.'
     """)

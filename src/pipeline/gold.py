@@ -9,6 +9,15 @@ Produces:
     line, ready for alerting. Contains PII (full_name, email). Must be a
     streaming table (Delta-backed) so UC column masks can be applied by the
     governance-setup job.
+
+_inserted_at/_updated_at are propagated from silver.tfl.customer_journeys
+(itself propagated from bronze — see silver.py), not stamped with
+current_timestamp(). disruption_summary aggregates many customer_journeys
+rows per group, so it takes MIN() across the group rather than MAX() — a
+single stale contributing row must surface as staleness, not get masked by
+fresher rows in the same bucket. The existing `last_updated` business column
+(MAX, "most recent change in this group") is a separate, legitimate concept
+and is kept alongside the platform `_updated_at`.
 """
 
 import dlt
@@ -21,12 +30,12 @@ KNOWN_LINE_IDS = [
 ]
 
 
-def _with_platform_columns(df, retention_days=365 * 7):
-    return (
-        df.withColumn("_inserted_at", F.current_timestamp())
-        .withColumn("_updated_at", F.current_timestamp())
-        .withColumn("_delete_at", F.date_add(F.current_date(), retention_days).cast("timestamp"))
-    )
+# retention_days is required, not defaulted: disruption_summary and
+# notification_targets serve different retention purposes (operational/no-PII
+# vs. personalised-alerting-linkage) and previously shared one default by
+# accident. See CLAUDE.md's purpose-based retention table.
+def _with_retention(df, retention_days):
+    return df.withColumn("_delete_at", F.date_add(F.current_date(), retention_days).cast("timestamp"))
 
 
 @dlt.table(
@@ -53,8 +62,14 @@ def disruption_summary():
             F.countDistinct("home_station").alias("affected_stations"),
             F.first("disruption_description").alias("disruption_description"),
             F.max("_updated_at").alias("last_updated"),
+            # Worst-case (oldest) contributing row in this group — a single
+            # stale input must surface as staleness, not be masked by fresher
+            # rows aggregated into the same bucket.
+            F.min("_inserted_at").alias("_inserted_at"),
+            F.min("_updated_at").alias("_updated_at"),
         )
-        .transform(_with_platform_columns)
+        # Operational/no-PII purpose — matches tfl_arrivals' 2-year window.
+        .transform(lambda df: _with_retention(df, retention_days=365 * 2))
     )
 
 
@@ -74,8 +89,14 @@ def notification_targets_raw():
             "status_severity_description",
             "disruption_reason",
             "disruption_description",
+            # No fan-in here — straight passthrough of customer_journeys'
+            # already-propagated (bronze-derived) timestamps.
+            "_inserted_at",
+            "_updated_at",
         )
-        .transform(_with_platform_columns)
+        # Personalised-alerting-linkage purpose — shortest window (1 year):
+        # purpose is fulfilled once the alert is generated.
+        .transform(lambda df: _with_retention(df, retention_days=365))
     )
 
 
@@ -95,5 +116,4 @@ dlt.apply_changes(
     keys=["customer_id", "line_id"],
     sequence_by=F.col("_updated_at"),
     stored_as_scd_type=1,
-    except_column_list=["_inserted_at"],
 )

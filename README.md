@@ -66,11 +66,19 @@ Every managed table carries three columns required by the data platform governan
 
 | Column | Type | Set when | Purpose |
 |---|---|---|---|
-| `_inserted_at` | `TIMESTAMP` | First insert only | Immutable audit trail — preserved across SCD1 merges via `except_column_list` |
-| `_updated_at` | `TIMESTAMP` | Every write | Drives freshness SLA monitoring in `admin.shared.retention_compliance` |
-| `_delete_at` | `TIMESTAMP` | At insert time | Drives platform Auto TTL — rows are purged after this date |
+| `_inserted_at` | `TIMESTAMP` | Bronze: first insert. Silver/gold: propagated from the bronze source row(s) | When the underlying data first entered the platform — not when a given layer's transform ran |
+| `_updated_at` | `TIMESTAMP` | Bronze: every write. Silver/gold: propagated from the bronze source row(s) (oldest of any fan-in inputs) | Drives freshness SLA monitoring in `admin.shared.retention_compliance` — reflects the age of the *data*, so a bronze ingestion failure shows up as staleness in silver/gold too |
+| `_delete_at` | `TIMESTAMP` | At insert time, per-table per purpose | Drives platform Auto TTL — rows are purged after this date |
 
-Retention periods: `tfl_arrivals` uses 2 years (raw operational data, no PII); all other tables use 7 years.
+Retention is set by *purpose*, not by pipeline layer — GDPR's storage-limitation principle (Art 5(1)(e)) ties retention to what the data is *for*, not which medallion layer it sits in:
+
+| Purpose | Tables | Retention |
+|---|---|---|
+| Operational (no personal data) | `tfl_arrivals`, `disruption_summary` | 2 years |
+| Customer profile / identity | `customer_profiles` (incl. `customer_notes`) | 2 years |
+| Personalised alerting linkage | `customer_journeys`, `notification_targets` | 1 year |
+
+See CLAUDE.md for the full rationale per purpose, including the known `customer_notes` row-level-retention limitation.
 
 ### Lakehouse Monitoring and dashboard refresh
 

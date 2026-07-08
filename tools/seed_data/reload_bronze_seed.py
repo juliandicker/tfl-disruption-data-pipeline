@@ -57,7 +57,9 @@ from databricks.sdk import WorkspaceClient
 from databricks.sdk.service.sql import Disposition, Format, StatementParameterListItem, StatementState
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-RETENTION_DAYS = 730
+# Operational purpose (no personal data) — mirrors ingest_tfl.py's
+# RETENTION_DAYS_OPERATIONAL. See CLAUDE.md's purpose-based retention table.
+RETENTION_DAYS = 365 * 2
 
 _parser = argparse.ArgumentParser()
 _parser.add_argument("--profile", default=None, help="Databricks CLI profile to authenticate with.")

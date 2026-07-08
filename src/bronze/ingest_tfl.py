@@ -22,6 +22,11 @@ spark = SparkSession.builder.getOrCreate()
 TFL_BASE = "https://api.tfl.gov.uk"
 APP_KEY = os.getenv("TFL_APP_KEY", "")
 
+# Purpose: operational transit status, no personal data — GDPR storage
+# limitation doesn't apply. Retention is a business/analytics choice, not a
+# legal one. See CLAUDE.md's purpose-based retention table.
+RETENTION_DAYS_OPERATIONAL = 365 * 2
+
 _parser = argparse.ArgumentParser()
 _parser.add_argument("--catalog", default="bronze")
 _parser.add_argument("--schema", default="tfl")
@@ -128,7 +133,7 @@ def main():
                 "affected_stops_json": json.dumps(affected_stops),
                 "_inserted_at": run_ts,
                 "_updated_at": run_ts,
-                "_delete_at": run_ts + timedelta(days=730),
+                "_delete_at": run_ts + timedelta(days=RETENTION_DAYS_OPERATIONAL),
             })
 
     if not rows:
