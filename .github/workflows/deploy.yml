@@ -59,3 +59,21 @@ jobs:
         env:
           DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install seed script dependencies
+        run: pip install databricks-sdk pandas pyarrow
+
+      # No-ops after the first successful deploy: reload_bronze_seed.py checks
+      # bronze.tfl.tfl_arrivals for existing rows and skips (--ci) rather than
+      # failing once real ingestion data is present. Authenticates as
+      # sp-tfl-pipeline via DATABRICKS_HOST/DATABRICKS_TOKEN — the same SP
+      # that already holds bronze's grants as tfl_pipeline's run_as identity.
+      - name: Seed bronze data (first deploy only)
+        run: python tools/seed_data/reload_bronze_seed.py --ci
+        env:
+          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+

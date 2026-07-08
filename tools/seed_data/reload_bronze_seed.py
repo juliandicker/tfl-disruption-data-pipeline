@@ -1,13 +1,21 @@
 """
-One-off local tool: reload the committed bronze seed data
-(seed_data/bronze/tfl_arrivals.parquet) back into bronze.tfl.tfl_arrivals
-after a workspace rebuild, via the Databricks SQL Statement Execution API —
-restoring a realistic-looking starting point before tfl-pipeline resumes
-live ingestion on top of it.
+Reload the committed bronze seed data (seed_data/bronze/tfl_arrivals.parquet)
+back into bronze.tfl.tfl_arrivals after a workspace rebuild, via the
+Databricks SQL Statement Execution API — restoring a realistic-looking
+starting point before tfl-pipeline resumes live ingestion on top of it.
 
-Runs entirely on your machine using your own Databricks CLI/SDK credentials —
-no script upload, no cluster, no job submission. See export_bronze_seed.py's
-docstring for why this works despite bronze's zero group grants.
+Runs against the SQL Statement Execution API only — no script upload, no
+cluster, no job submission. Two callers:
+
+  * A human, locally, with --profile <cli-profile>, using their own
+    Databricks CLI/SDK credentials. See export_bronze_seed.py's docstring
+    for why this works despite bronze's zero group grants.
+  * The deploy workflow (.github/workflows/deploy.yml), with no --profile
+    and --ci set, authenticating as sp-tfl-pipeline via the DATABRICKS_HOST/
+    DATABRICKS_TOKEN env vars already exported by that job. That SP is the
+    run_as identity for tfl_pipeline, so it already holds bronze's grants —
+    no extra permissions needed. Runs after every bundle deploy but only
+    ever inserts rows the first time (see --ci below).
 
 Only tfl_arrivals is reloaded. customer_profiles is deliberately not seeded —
 it's single-generation Faker output with no accumulated history worth
@@ -23,7 +31,9 @@ retention window ingest_tfl.py uses, so Auto TTL stays correct.
 
 Refuses to run against a table that already has rows unless --force is
 passed, to avoid duplicating history on top of live data from an accidental
-re-run.
+re-run. Under --ci, that refusal becomes a silent no-op (exit 0) instead of
+a hard failure, since "already seeded" is the expected steady state on every
+deploy after the first — it shouldn't turn the workflow red.
 
 Rows are inserted one at a time via parameterized statements (not string-
 interpolated SQL) — raw_payload is arbitrary JSON text and needs safe
@@ -32,6 +42,7 @@ binding, not manual quote-escaping.
 Usage:
     pip install databricks-sdk pandas pyarrow
     python tools/seed_data/reload_bronze_seed.py --profile <cli-profile>
+    python tools/seed_data/reload_bronze_seed.py --ci   # CI: no-op if already seeded
 """
 
 import argparse
@@ -52,6 +63,7 @@ _parser.add_argument("--catalog", default="bronze")
 _parser.add_argument("--schema", default="tfl")
 _parser.add_argument("--input", default=str(REPO_ROOT / "seed_data" / "bronze" / "tfl_arrivals.parquet"))
 _parser.add_argument("--force", action="store_true", help="Reload even if the target table already has rows.")
+_parser.add_argument("--ci", action="store_true", help="Treat an already-seeded table as a clean no-op (exit 0) instead of failing.")
 args = _parser.parse_args()
 
 TABLE_DDL = """
@@ -120,6 +132,9 @@ def main():
     if w.tables.exists(table).table_exists:
         row_count = int(_exec(w, warehouse_id, f"SELECT COUNT(*) FROM {table}").result.data_array[0][0])
         if row_count > 0 and not args.force:
+            if args.ci:
+                print(f"{table} already has {row_count} rows — skipping seed (already seeded).")
+                return
             raise SystemExit(f"{table} already has {row_count} rows — pass --force to reload anyway.")
 
     df = pd.read_parquet(args.input)
